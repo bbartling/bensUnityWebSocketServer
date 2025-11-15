@@ -1,2 +1,11 @@
 # bensUnityWebSocketServer
 Python Fast API server for hosting 2 Player games in Unity
+
+
+## Run Command
+Pip install requirements text file for python packages.
+
+```bash
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
