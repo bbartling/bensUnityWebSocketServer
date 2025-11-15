@@ -9,3 +9,8 @@ Pip install requirements text file for python packages.
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
+## Render Hosting
+
+```
+uvicorn app:app --host 0.0.0.0 --port $PORT --http h11
+```
