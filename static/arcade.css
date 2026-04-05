@@ -7,13 +7,13 @@
 }
 
 :root {
-  --retro-bg0: #0c0d12;
+  --retro-bg0: #2a2e3a;
   --retro-cyan: #00f0ff;
   --retro-magenta: #ff3cac;
   --retro-amber: #ffc800;
   --retro-green: #39ff14;
-  --retro-fg: #c8ccd8;
-  --retro-dim: #6a7088;
+  --retro-fg: #dce0ea;
+  --retro-dim: #5c6278;
 }
 
 html {
@@ -30,9 +30,9 @@ body {
   line-height: 1.35;
   background-color: var(--retro-bg0);
   background-image:
-    radial-gradient(ellipse 100% 70% at 50% -25%, rgba(0, 240, 255, 0.1) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 45% at 100% 80%, rgba(255, 60, 172, 0.07) 0%, transparent 45%),
-    linear-gradient(180deg, #0e1018 0%, var(--retro-bg0) 45%, #06070c 100%);
+    radial-gradient(ellipse 100% 70% at 50% -25%, rgba(0, 240, 255, 0.14) 0%, transparent 52%),
+    radial-gradient(ellipse 60% 45% at 100% 80%, rgba(255, 60, 172, 0.09) 0%, transparent 48%),
+    linear-gradient(180deg, #353a4a 0%, var(--retro-bg0) 42%, #22262f 100%);
 }
 
 body::before {
@@ -45,10 +45,10 @@ body::before {
     0deg,
     rgba(0, 0, 0, 0) 0px,
     rgba(0, 0, 0, 0) 2px,
-    rgba(0, 0, 0, 0.13) 2px,
-    rgba(0, 0, 0, 0.13) 3px
+    rgba(0, 0, 0, 0.07) 2px,
+    rgba(0, 0, 0, 0.07) 3px
   );
-  opacity: 0.4;
+  opacity: 0.35;
 }
 
 body::after {
@@ -57,8 +57,8 @@ body::after {
   inset: 0;
   pointer-events: none;
   z-index: 10001;
-  background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.55) 100%);
-  opacity: 0.65;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.28) 100%);
+  opacity: 0.55;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -118,13 +118,13 @@ header p strong {
   gap: 10px;
   margin-top: 18px;
   padding: 10px 16px;
-  background: rgba(10, 12, 20, 0.85);
-  border: 3px solid #0a0a0f;
+  background: rgba(24, 28, 40, 0.92);
+  border: 3px solid #1a1e2a;
   border-radius: 2px;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 0 0 1px rgba(0, 240, 255, 0.2),
-    0 4px 0 #050508;
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px rgba(0, 240, 255, 0.22),
+    0 4px 0 #12141c;
   font-size: 1rem;
   color: var(--retro-dim);
 }
@@ -187,22 +187,23 @@ a.game-card:active {
   align-items: center;
   justify-content: center;
   position: relative;
-  background: linear-gradient(165deg, #252830 0%, #14161e 55%, #0d0f14 100%);
-  border-bottom: 2px solid #080910;
-  box-shadow: inset 0 -8px 24px rgba(0, 0, 0, 0.35);
+  /* Darker “bezel” so the icon mats read as separate panels */
+  background: radial-gradient(ellipse 90% 70% at 50% 0%, rgba(0, 240, 255, 0.05) 0%, transparent 55%), #05060a;
+  border-bottom: 2px solid #030407;
+  box-shadow: inset 0 -10px 28px rgba(0, 0, 0, 0.5);
 }
 
 .card-visual.tetris {
   background:
-    radial-gradient(circle at 25% 25%, rgba(107, 140, 255, 0.18) 0%, transparent 42%),
-    radial-gradient(circle at 78% 72%, rgba(255, 107, 139, 0.14) 0%, transparent 40%),
-    linear-gradient(165deg, #252830 0%, #12141c 100%);
+    radial-gradient(circle at 22% 18%, rgba(107, 140, 255, 0.12) 0%, transparent 38%),
+    radial-gradient(circle at 82% 78%, rgba(255, 107, 139, 0.1) 0%, transparent 36%),
+    #05060a;
 }
 
 .card-visual.pong {
   background:
-    radial-gradient(circle at 50% 40%, rgba(0, 240, 255, 0.1) 0%, transparent 50%),
-    linear-gradient(165deg, #252830 0%, #12141c 100%);
+    radial-gradient(circle at 50% 25%, rgba(0, 240, 255, 0.09) 0%, transparent 42%),
+    #05060a;
 }
 
 .card-body {
@@ -268,19 +269,26 @@ footer code {
   font-size: 0.9rem;
 }
 
-/* Pixel icons */
+/* Pixel icons — sit on a slightly lighter grey “mat” vs the dark bezel */
 .ico-tetris {
   display: grid;
   grid-template-columns: repeat(3, 24px);
   grid-template-rows: repeat(2, 24px);
   gap: 5px;
-  filter: drop-shadow(0 4px 0 #050508);
+  padding: 14px 18px;
+  background: linear-gradient(165deg, #363e54 0%, #2a3144 42%, #222838 100%);
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  border-radius: 4px;
+  box-shadow:
+    0 3px 0 #050508,
+    0 8px 20px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
 .ico-tetris b {
   border-radius: 2px;
   border: 2px solid #0a0a10;
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.25);
 }
 
 .ico-tetris b:nth-child(1) {
@@ -309,9 +317,16 @@ footer code {
   width: 128px;
   height: 76px;
   border: 3px solid #0a0a10;
-  border-radius: 2px;
-  background: linear-gradient(90deg, rgba(107, 140, 255, 0.14) 0%, rgba(255, 107, 139, 0.14) 100%);
-  box-shadow: inset 0 0 20px rgba(0, 240, 255, 0.05), 0 4px 0 #050508;
+  border-radius: 4px;
+  /* Cool blue-grey field: clearly lighter than .card-visual bezel */
+  background:
+    linear-gradient(90deg, rgba(107, 140, 255, 0.28) 0%, rgba(255, 107, 139, 0.28) 100%),
+    linear-gradient(180deg, #3d465e 0%, #2e3548 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 24px rgba(0, 240, 255, 0.06),
+    0 3px 0 #050508,
+    0 10px 22px rgba(0, 0, 0, 0.5);
 }
 
 .ico-pong::before,
