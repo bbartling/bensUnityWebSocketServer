@@ -384,7 +384,7 @@
 
   document.addEventListener('keydown', (event) => {
     if (
-      ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(event.code) > -1
+      ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].indexOf(event.code) > -1
     ) {
       event.preventDefault();
     }
@@ -399,6 +399,7 @@
         break;
       case 'ArrowUp':
       case 'w':
+      case ' ':
         game.rotatePiece();
         break;
       case 'ArrowDown':
