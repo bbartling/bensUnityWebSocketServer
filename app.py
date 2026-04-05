@@ -9,10 +9,13 @@ Render / local:
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+INDEX_HTML = STATIC_DIR / "index.html"
+
 
 app = FastAPI(title="MQTT Arcade", version="2.0.0")
 
@@ -20,6 +23,22 @@ app = FastAPI(title="MQTT Arcade", version="2.0.0")
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/", include_in_schema=False)
+async def root_dashboard():
+    """Always serve the arcade dashboard HTML (avoids stale JSON or mount quirks on some hosts)."""
+    return FileResponse(INDEX_HTML, media_type="text/html")
+
+
+@app.get("/dashboard", include_in_schema=False)
+async def redirect_dashboard():
+    return RedirectResponse(url="/", status_code=307)
+
+
+@app.get("/home", include_in_schema=False)
+async def redirect_home():
+    return RedirectResponse(url="/", status_code=307)
 
 
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")

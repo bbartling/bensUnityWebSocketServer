@@ -9,7 +9,9 @@ FastAPI app that serves a small **MQTT Arcade** dashboard plus static HTML clien
 | Tetris | `/tetris/dad.html`     | `/tetris/adrien.html`     |
 | Pong   | `/pong/dad.html`       | `/pong/adrien.html`       |
 
-Dashboard: `/` · Topic roots: `tetris/bens_arcade/...`, `pong/bens_arcade/...`
+Dashboard: **`/`** (explicit HTML route so the root is never a JSON stub). Aliases: **`/dashboard`** and **`/home`** → redirect to **`/`**. Topic roots: `tetris/bens_arcade/...`, `pong/bens_arcade/...`
+
+If you still see `{"message":"Hello World — WebSocket Pong Server is running!"}` on [Render](https://bensunitywebsocketserver.onrender.com/), the service is running an **older deploy** — push this repo and wait for the build to finish (or trigger a manual deploy).
 
 ## Local (Windows / macOS / Linux)
 
