@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>MQTT Tetris — Adrien</title>
+    <link rel="stylesheet" href="/tetris/tetris.css" />
+    <style>
+      :root {
+        --accent: #ff6b8b;
+      }
+    </style>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>MQTT CO‑OP TETRIS</h1>
+        <div class="sub">Adrien · spawn left · ← → move · ↑ / W rotate · ↓ / S soft drop</div>
+      </header>
+      <div id="boardWrap">
+        <canvas id="gameCanvas" width="600" height="500"></canvas>
+      </div>
+      <div id="score">TEAM 0 pts</div>
+      <div id="ui">
+        <div id="gameInfo"></div>
+        <div id="brokerInfo"></div>
+        <button type="button" id="statusBtn">Send ready ping</button>
+        <div id="statusInfo"></div>
+        <div id="connectionInfo"></div>
+        <p class="nav-other">
+          <a href="/">Dashboard</a> · <a href="/tetris/">Tetris seats</a> · Open <a href="/tetris/dad.html">Dad</a> in another window.
+        </p>
+      </div>
+    </div>
+    <script>
+      window.TETRIS_CONFIG = {
+        localId: 'Adrien',
+        remoteId: 'Dad',
+        remoteLabel: 'Dad',
+        playerColour: '#ff6b8b',
+        remoteColour: '#6b8cff',
+        spawnFromRight: false,
+        gameId: 'bens_arcade',
+      };
+    </script>
+    <script src="/tetris/game.js"></script>
+  </body>
+</html>

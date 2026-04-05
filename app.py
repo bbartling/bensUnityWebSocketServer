@@ -1,56 +1,25 @@
-import asyncio
-import json
-import logging
-from collections import defaultdict
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+"""
+FastAPI static host for MQTT arcade (Tetris + Pong) over the public Mosquitto test broker.
 
-'''
-uvicorn app:app --host 0.0.0.0 --port 8000
-'''
+Render / local:
+  uvicorn app:app --host 0.0.0.0 --port 8000 --http h11
+  uvicorn app:app --host 0.0.0.0 --port $PORT --http h11
+"""
 
-app = FastAPI()
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger(__name__)
+from pathlib import Path
 
-rooms: dict[str, list[WebSocket]] = defaultdict(list)
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-# -------------------------
-# NEW HOME ROUTE
-# -------------------------
-@app.get("/")
-async def root():
-    return {"message": "Hello World — WebSocket Pong Server is running!"}
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+
+app = FastAPI(title="MQTT Arcade", version="2.0.0")
 
 
-@app.websocket("/ws/{room_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str):
-    """
-    Handles a new client connection for a specific room.
-    """
-    await websocket.accept()
-    rooms[room_id].append(websocket)
-    log.info(f"A player joined room '{room_id}'. Total: {len(rooms[room_id])}")
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
-    try:
-        while True:
-            data_bytes = await websocket.receive_bytes()
 
-            broadcast_tasks = []
-            for client in rooms[room_id]:
-                if client != websocket:
-                    broadcast_tasks.append(client.send_bytes(data_bytes))
-
-            if broadcast_tasks:
-                await asyncio.gather(*broadcast_tasks)
-
-    except WebSocketDisconnect:
-        log.info(f"A player disconnected from room '{room_id}'.")
-    finally:
-        rooms[room_id].remove(websocket)
-        if not rooms[room_id]:
-            log.info(f"Room '{room_id}' is now empty and closed.")
-            del rooms[room_id]
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, http="h11")
+app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
