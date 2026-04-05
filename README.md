@@ -4,10 +4,15 @@ FastAPI app that serves a small **MQTT Arcade** dashboard plus static HTML clien
 
 ## Seats
 
-| Game   | Dad (Player A)        | Adrien (Player B)        |
-|--------|------------------------|---------------------------|
-| Tetris | `/tetris/dad.html`     | `/tetris/adrien.html`     |
-| Pong   | `/pong/dad.html`       | `/pong/adrien.html`       |
+| Game   | Man | Boy |
+|--------|-----|-----|
+| Tetris | `/tetris/man.html` (spawn right) | `/tetris/boy.html` (spawn left) |
+| Pong   | `/pong/man.html` (host, left paddle) | `/pong/boy.html` (right paddle) |
+| Emoji Lobber | `/lobber/man.html` (shoots first) | `/lobber/boy.html` |
+
+**Emoji Lobber** — turn-based slingshot lobs (Angry Birds–style pull & release), emoji spins in flight; topics `lobber/bens_arcade/<Man|Boy>/{pick,shot,finish,status}`. Optional solo: **`?solo=1`** on `man.html` or `boy.html`.
+
+MQTT player ids in topics are **`Man`** and **`Boy`**. Old URLs **`/tetris/dad.html`**, **`/tetris/adrien.html`**, **`/pong/dad.html`**, **`/pong/adrien.html`** redirect (307) to the new pages.
 
 Dashboard: **`/`** (explicit HTML route so the root is never a JSON stub). Aliases: **`/dashboard`** and **`/home`** → redirect to **`/`**. Topic roots: `tetris/bens_arcade/...`, `pong/bens_arcade/...`
 
@@ -21,7 +26,7 @@ pip install -r requirements.txt
 uvicorn app:app --host 0.0.0.0 --port 8000 --http h11
 ```
 
-Open `http://127.0.0.1:8000/` and pick a game. Use two browser tabs (or machines) for Dad + Adrien.
+Open `http://127.0.0.1:8000/` and pick a game. Use two browser tabs (or machines) for Man + Boy.
 
 ## Render
 

@@ -148,7 +148,7 @@ header p strong {
   grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
   gap: clamp(18px, 3vw, 28px);
   width: 100%;
-  max-width: 760px;
+  max-width: 1100px;
 }
 
 a.game-card {
@@ -206,6 +206,13 @@ a.game-card:active {
     #05060a;
 }
 
+.card-visual.lobber {
+  background:
+    radial-gradient(circle at 30% 70%, rgba(255, 200, 0, 0.14) 0%, transparent 42%),
+    radial-gradient(circle at 75% 30%, rgba(255, 107, 139, 0.1) 0%, transparent 38%),
+    #05060a;
+}
+
 .card-body {
   padding: 18px 18px 22px;
   border-top: 2px dotted rgba(0, 240, 255, 0.12);
@@ -244,12 +251,12 @@ a.game-card:active {
   border: 2px solid rgba(255, 255, 255, 0.08);
 }
 
-.seat-dad {
+.seat-man {
   color: #9db4ff;
   border-color: rgba(107, 140, 255, 0.4);
 }
 
-.seat-adrien {
+.seat-boy {
   color: #ffb3c1;
   border-color: rgba(255, 107, 139, 0.4);
 }
@@ -364,4 +371,76 @@ footer code {
   background: var(--retro-cyan);
   border: 2px solid #0a0a10;
   box-shadow: 0 0 12px var(--retro-cyan);
+}
+
+/* Emoji Lobber — slingshot + spinning projectile */
+.ico-lobber {
+  position: relative;
+  width: 132px;
+  height: 78px;
+  padding: 10px 12px;
+  background: linear-gradient(165deg, #3d4a42 0%, #283530 100%);
+  border: 1px solid rgba(255, 200, 0, 0.28);
+  border-radius: 4px;
+  box-shadow:
+    0 3px 0 #050508,
+    0 8px 20px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.ico-lobber::before,
+.ico-lobber::after {
+  content: '';
+  position: absolute;
+  bottom: 10px;
+  width: 5px;
+  height: 36px;
+  background: #4a3d32;
+  border: 2px solid #0a0a10;
+  border-radius: 1px;
+}
+
+.ico-lobber::before {
+  left: 22px;
+  transform: rotate(-12deg);
+}
+
+.ico-lobber::after {
+  right: 22px;
+  transform: rotate(12deg);
+}
+
+.ico-lobber-emoji {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  margin: -14px 0 0 -14px;
+  width: 28px;
+  height: 28px;
+  display: inline-block;
+  font-size: 1.35rem;
+  line-height: 28px;
+  text-align: center;
+  animation: ico-lobber-spin 1.2s linear infinite;
+  filter: drop-shadow(0 2px 0 #050508);
+}
+
+@keyframes ico-lobber-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ico-lobber-arc {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 48px;
+  height: 32px;
+  border: 2px dashed rgba(255, 200, 0, 0.35);
+  border-radius: 50%;
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  transform: rotate(-35deg);
+  pointer-events: none;
 }

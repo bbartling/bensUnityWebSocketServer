@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>MQTT Pong — Dad</title>
+    <title>MQTT Pong — Boy</title>
     <link rel="stylesheet" href="/pong/pong.css" />
     <style>
       :root {
-        --accent: #6b8cff;
+        --accent: #ff6b8b;
       }
     </style>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
@@ -16,12 +16,12 @@
     <div id="app">
       <header>
         <h1>MQTT PONG</h1>
-        <div class="sub">Dad · host · left paddle · W/S or ↑/↓</div>
+        <div class="sub">Boy · right paddle · W/S or ↑/↓</div>
       </header>
       <div id="boardWrap">
         <canvas id="gameCanvas" width="700" height="400"></canvas>
       </div>
-      <div id="score">DAD 0 · ADRIEN 0</div>
+      <div id="score">MAN 0 · BOY 0</div>
       <div id="ui">
         <div id="gameInfo"></div>
         <div id="brokerInfo"></div>
@@ -29,15 +29,15 @@
         <div id="statusInfo"></div>
         <div id="connectionInfo"></div>
         <p class="nav-other">
-          <a href="/">Dashboard</a> · <a href="/pong/">Pong seats</a> · Open <a href="/pong/adrien.html">Adrien</a> in another window.
+          <a href="/">Dashboard</a> · <a href="/pong/">Pong seats</a> · Open <a href="/pong/man.html">Man</a> in another window.
         </p>
       </div>
     </div>
     <script>
       window.PONG_CONFIG = {
-        role: 'host',
-        localLabel: 'Dad',
-        remoteLabel: 'Adrien',
+        role: 'guest',
+        localLabel: 'Boy',
+        remoteLabel: 'Man',
         accentLeft: '#6b8cff',
         accentRight: '#ff6b8b',
       };

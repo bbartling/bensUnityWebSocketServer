@@ -3,23 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>MQTT Pong — Pick a seat</title>
-    <link rel="stylesheet" href="/pong/pong.css" />
+    <title>Emoji Lobber — Seats</title>
+    <link rel="stylesheet" href="/lobber/lobber.css" />
     <style>
       :root {
-        --accent: #7af0ff;
+        --accent: #ffc800;
+      }
+      html,
+      body {
+        overflow: auto;
+        height: auto;
+        min-height: 100%;
       }
       body {
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 24px;
-        overflow: auto;
       }
       .card {
-        max-width: 440px;
+        max-width: 460px;
         text-align: center;
-        background: linear-gradient(165deg, rgba(22, 32, 48, 0.92) 0%, rgba(12, 16, 24, 0.95) 100%);
+        background: linear-gradient(165deg, rgba(22, 32, 48, 0.95) 0%, rgba(12, 16, 24, 0.98) 100%);
         border: 1px solid rgba(122, 240, 255, 0.25);
         border-radius: 16px;
         padding: 28px;
@@ -27,15 +32,15 @@
       }
       .card h1 {
         font-family: 'Orbitron', sans-serif;
-        font-size: 1.05rem;
+        font-size: 1rem;
         margin: 0 0 12px;
-        color: #7af0ff;
-        letter-spacing: 0.08em;
+        color: #ffe08a;
+        letter-spacing: 0.1em;
       }
       .card p {
         margin: 0 0 16px;
-        font-size: 0.75rem;
-        opacity: 0.85;
+        font-size: 0.72rem;
+        opacity: 0.88;
         line-height: 1.5;
       }
       .card a {
@@ -46,7 +51,7 @@
         text-decoration: none;
         font-weight: 600;
         font-family: 'Orbitron', sans-serif;
-        font-size: 0.62rem;
+        font-size: 0.58rem;
         letter-spacing: 0.1em;
         color: #061018;
       }
@@ -59,7 +64,7 @@
         box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
       }
       .back {
-        margin-top: 20px;
+        margin-top: 18px;
         font-size: 0.68rem;
       }
       .back a {
@@ -76,12 +81,13 @@
   </head>
   <body>
     <div class="card">
-      <h1>MQTT PONG</h1>
+      <h1>EMOJI LOBBER</h1>
       <p>
-        Man runs the ball and the <strong>left</strong> paddle. Boy drives the <strong>right</strong> paddle. Controls: <strong>W/S</strong> or
-        <strong>↑/↓</strong>. Broker: <code>wss://test.mosquitto.org:8081</code>
+        Angry-Birds-style pull-and-release lobs over MQTT. Pick an emoji, take turns knocking down towers and 🎯 targets.
+        Broker: <code>wss://test.mosquitto.org:8081</code>
       </p>
-      <p><a class="a" href="/pong/man.html">MAN</a> <a class="b" href="/pong/boy.html">BOY</a></p>
+      <p><a class="a" href="/lobber/man.html">MAN</a> <a class="b" href="/lobber/boy.html">BOY</a></p>
+      <p style="font-size: 0.65rem; opacity: 0.75">One browser tab each. Optional solo: add <code>?solo=1</code> to either URL.</p>
       <p class="back"><a href="/">← Arcade dashboard</a></p>
     </div>
   </body>

@@ -41,4 +41,24 @@ async def redirect_home():
     return RedirectResponse(url="/", status_code=307)
 
 
+@app.get("/tetris/dad.html", include_in_schema=False)
+async def legacy_tetris_dad():
+    return RedirectResponse(url="/tetris/man.html", status_code=307)
+
+
+@app.get("/tetris/adrien.html", include_in_schema=False)
+async def legacy_tetris_adrien():
+    return RedirectResponse(url="/tetris/boy.html", status_code=307)
+
+
+@app.get("/pong/dad.html", include_in_schema=False)
+async def legacy_pong_dad():
+    return RedirectResponse(url="/pong/man.html", status_code=307)
+
+
+@app.get("/pong/adrien.html", include_in_schema=False)
+async def legacy_pong_adrien():
+    return RedirectResponse(url="/pong/boy.html", status_code=307)
+
+
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")

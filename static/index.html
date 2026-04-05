@@ -11,7 +11,7 @@
       <header>
         <h1>MQTT ARCADE</h1>
         <p>
-          Two seats per game — <strong>Dad</strong> and <strong>Adrien</strong> — synced over MQTT WebSockets on the public
+          Two seats per game — <strong>Man</strong> and <strong>Boy</strong> — synced over MQTT WebSockets on the public
           Mosquitto test broker. Open each seat in its own tab or device.
         </p>
         <div class="broker-pill">
@@ -31,8 +31,8 @@
             <h2>CO‑OP TETRIS</h2>
             <p>Shared well, ghost partner piece, team score. Pick a seat to spawn left or right.</p>
             <div class="seats">
-              <span class="seat-dad">Dad → /tetris/dad.html</span>
-              <span class="seat-adrien">Adrien → /tetris/adrien.html</span>
+              <span class="seat-man">Man → /tetris/man.html</span>
+              <span class="seat-boy">Boy → /tetris/boy.html</span>
             </div>
           </div>
         </a>
@@ -43,10 +43,27 @@
           </div>
           <div class="card-body">
             <h2>PONG</h2>
-            <p>Classic volley: Dad hosts ball physics (left paddle); Adrien drives the right paddle over MQTT.</p>
+            <p>Classic volley: Man hosts ball physics (left paddle); Boy drives the right paddle over MQTT.</p>
             <div class="seats">
-              <span class="seat-dad">Dad → /pong/dad.html</span>
-              <span class="seat-adrien">Adrien → /pong/adrien.html</span>
+              <span class="seat-man">Man → /pong/man.html</span>
+              <span class="seat-boy">Boy → /pong/boy.html</span>
+            </div>
+          </div>
+        </a>
+
+        <a class="game-card" href="/lobber/">
+          <div class="card-visual lobber">
+            <div class="ico-lobber" aria-hidden="true">
+              <span class="ico-lobber-arc"></span>
+              <span class="ico-lobber-emoji">😤</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <h2>EMOJI LOBBER</h2>
+            <p>Angry-Birds-style slingshot: pick an emoji, take turns lobbing at towers &amp; targets over MQTT.</p>
+            <div class="seats">
+              <span class="seat-man">Man → /lobber/man.html</span>
+              <span class="seat-boy">Boy → /lobber/boy.html</span>
             </div>
           </div>
         </a>

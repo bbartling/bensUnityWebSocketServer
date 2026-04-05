@@ -1,5 +1,5 @@
 /**
- * MQTT 2-player Pong. Dad (host) simulates ball + left paddle; Adrien publishes right paddle Y.
+ * MQTT 2-player Pong. Man (host) simulates ball + left paddle; Boy publishes right paddle Y.
  * Expects window.PONG_CONFIG: { role: 'host'|'guest', localLabel, remoteLabel, accentLeft, accentRight }
  */
 (function () {
@@ -13,8 +13,8 @@
 
   const BROKER_URL = 'wss://test.mosquitto.org:8081';
   const GAME_ID = 'bens_arcade';
-  const HOST_ID = 'Dad';
-  const GUEST_ID = 'Adrien';
+  const HOST_ID = 'Man';
+  const GUEST_ID = 'Boy';
 
   const W = 700;
   const H = 400;
@@ -140,7 +140,7 @@
 
   const scoreEl = document.getElementById('score');
   function setScoreText(sl, sr) {
-    scoreEl.textContent = `DAD ${sl}  ·  ADRIEN ${sr}`;
+    scoreEl.textContent = `MAN ${sl}  ·  BOY ${sr}`;
   }
 
   let client = null;
