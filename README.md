@@ -10,7 +10,7 @@ FastAPI app that serves a small **MQTT Arcade** dashboard plus static HTML clien
 | Pong   | `/pong/man.html` (host, left paddle) | `/pong/boy.html` (right paddle) |
 | Emoji Lobber | `/lobber/man.html` (shoots first) | `/lobber/boy.html` |
 
-**Emoji Lobber** — turn-based slingshot lobs (Angry Birds–style pull & release), emoji spins in flight; topics `lobber/bens_arcade/<Man|Boy>/{pick,shot,finish,status}`. Optional solo: **`?solo=1`** on `man.html` or `boy.html`.
+**Emoji Lobber** — Angry Birds–style pull & release (speed scales with drag length), spinning projectile, destructible wood/stone + **villain emoji** targets, debris particles, per-hero powers (human-face picker only). **Man** is host: publishes `lobber/bens_arcade/Man/sync` for late join; **Boy** sends `Boy/join` to request sync. Use a **unique MQTT `clientId`** so two tabs don’t kick each other off the public broker. Topics: `pick`, `shot`, `finish`, `status`, `sync`, `join`. If no partner ~14s after you lock, **1-player** starts (or use **`?solo=1`**).
 
 MQTT player ids in topics are **`Man`** and **`Boy`**. Old URLs **`/tetris/dad.html`**, **`/tetris/adrien.html`**, **`/pong/dad.html`**, **`/pong/adrien.html`** redirect (307) to the new pages.
 

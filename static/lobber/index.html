@@ -83,11 +83,12 @@
     <div class="card">
       <h1>EMOJI LOBBER</h1>
       <p>
-        Angry-Birds-style pull-and-release lobs over MQTT. Pick an emoji, take turns knocking down towers and 🎯 targets.
+        Angry-Birds-style drag for angle and power (emoji spins in flight). Human-face heroes = your ammo; villain &amp; creature faces = “pigs.”
+        Man hosts and syncs state; Boy catches up if he joins late. If nobody else connects ~14s after you lock, <strong>1-player</strong> starts.
         Broker: <code>wss://test.mosquitto.org:8081</code>
       </p>
       <p><a class="a" href="/lobber/man.html">MAN</a> <a class="b" href="/lobber/boy.html">BOY</a></p>
-      <p style="font-size: 0.65rem; opacity: 0.75">One browser tab each. Optional solo: add <code>?solo=1</code> to either URL.</p>
+      <p style="font-size: 0.65rem; opacity: 0.75">One tab per seat (unique client IDs). Short-circuit network with <code>?solo=1</code> if you want.</p>
       <p class="back"><a href="/">← Arcade dashboard</a></p>
     </div>
   </body>

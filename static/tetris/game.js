@@ -139,7 +139,31 @@
       });
     }
 
-    collide(pos = this.piece.pos, mat = this.piece.matrix) {
+    /**
+     * Locked board + walls only. Partner's *falling* piece is NOT solid — otherwise
+     * gravity mistakes overlap for landing, merges mid-air, and stacks desync.
+     */
+    collideLocked(pos = this.piece.pos, mat = this.piece.matrix) {
+      for (let y = 0; y < mat.length; y++) {
+        for (let x = 0; x < mat[y].length; x++) {
+          const value = mat[y][x];
+          if (value !== 0) {
+            const bx = x + pos.x;
+            const by = y + pos.y;
+            if (bx < 0 || bx >= COLS || by >= ROWS) {
+              return true;
+            }
+            if (by >= 0 && this.board[by][bx] !== 0) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    /** Walls, locked cells, and partner's active piece (for moves / rotate). */
+    collideAll(pos = this.piece.pos, mat = this.piece.matrix) {
       for (let y = 0; y < mat.length; y++) {
         for (let x = 0; x < mat[y].length; x++) {
           const value = mat[y][x];
@@ -171,9 +195,25 @@
       return false;
     }
 
+    /** Drop straight down onto locked cells only (ignore partner ghost). */
+    settleOntoBoard() {
+      let moved = false;
+      while (true) {
+        const next = { x: this.piece.pos.x, y: this.piece.pos.y + 1 };
+        if (this.collideLocked(next, this.piece.matrix)) {
+          break;
+        }
+        this.piece.pos.y++;
+        moved = true;
+      }
+      if (moved) {
+        publishState();
+      }
+    }
+
     rotatePiece() {
       const rotated = rotate(this.piece.matrix);
-      if (!this.collide(this.piece.pos, rotated)) {
+      if (!this.collideAll(this.piece.pos, rotated)) {
         this.piece.matrix = rotated;
         publishState();
       }
@@ -181,7 +221,7 @@
 
     movePiece(offsetX) {
       this.piece.pos.x += offsetX;
-      if (this.collide()) {
+      if (this.collideAll()) {
         this.piece.pos.x -= offsetX;
       } else {
         publishState();
@@ -190,7 +230,7 @@
 
     dropPiece() {
       this.piece.pos.y++;
-      if (this.collide()) {
+      if (this.collideLocked()) {
         this.piece.pos.y--;
         this.merge();
         this.clearLines();
@@ -240,7 +280,7 @@
       const pieceWidth = matrix[0].length;
       const spawnX = spawnFromRight ? COLS - pieceWidth : 0;
       this.piece = { type: type, matrix: matrix, pos: { x: spawnX, y: -1 } };
-      if (this.collide()) {
+      if (this.collideAll()) {
         this.board.forEach((row) => row.fill(0));
         this.score = 0;
         this.linesTotal = 0;
@@ -503,6 +543,7 @@
           game.remotePiece = data.piece;
           applyRemoteLocks(game, sender, data.board);
           updateTeamScore();
+          game.settleOntoBoard();
           game.draw();
           remoteConnected = true;
           remoteTrying = false;

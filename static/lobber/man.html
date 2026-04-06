@@ -15,7 +15,11 @@
   <body>
     <div id="emojiPicker">
       <h2>EMOJI LOBBER</h2>
-      <p class="pick-hint">Pick your projectile, then Lock in. When both players are ready, the match starts. Man shoots first.</p>
+      <p class="pick-hint">
+        <strong>Man = host.</strong> Pick a <em>human-face</em> hero (each has a power). Villain &amp; pig-like targets are on the right.
+        If no one joins in ~14s after you lock, <strong>1-player</strong> starts automatically. Boy can join anytime — state syncs from Man.
+      </p>
+      <p id="powerBlurb" class="power-blurb">Point at a face for its power — click to select.</p>
       <div id="emojiGrid" class="emoji-grid"></div>
       <button type="button" id="lockEmoji">Lock in</button>
       <p id="pickStatus"></p>

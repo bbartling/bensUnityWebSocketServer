@@ -178,12 +178,21 @@ button#statusBtn:active {
 }
 
 #emojiPicker .pick-hint {
-  margin: 0 0 16px;
-  font-size: 0.72rem;
-  opacity: 0.85;
-  max-width: 22rem;
+  margin: 0 0 12px;
+  font-size: 0.68rem;
+  opacity: 0.88;
+  max-width: 26rem;
   text-align: center;
   line-height: 1.45;
+}
+
+.power-blurb {
+  margin: 0 0 14px;
+  min-height: 2.4em;
+  font-size: 0.68rem;
+  color: #ffe08a;
+  max-width: 24rem;
+  line-height: 1.35;
 }
 
 .emoji-grid {
