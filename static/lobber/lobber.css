@@ -195,6 +195,48 @@ button#statusBtn:active {
   line-height: 1.35;
 }
 
+.level-select-label {
+  margin: 0 0 8px;
+  font-size: 0.62rem;
+  opacity: 0.82;
+  max-width: 26rem;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.level-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-width: 28rem;
+  margin-bottom: 14px;
+}
+
+.level-buttons button {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.45rem;
+  letter-spacing: 0.06em;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(122, 240, 255, 0.35);
+  background: rgba(18, 26, 40, 0.95);
+  color: #c8d8f0;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.level-buttons button:hover {
+  border-color: rgba(122, 240, 255, 0.65);
+  color: #fff;
+}
+
+.level-buttons button.selected {
+  border-color: var(--accent, #6b8cff);
+  box-shadow: 0 0 12px rgba(107, 140, 255, 0.35);
+  color: #ffe08a;
+}
+
 .emoji-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(56px, 1fr));

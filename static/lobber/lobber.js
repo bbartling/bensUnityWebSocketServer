@@ -17,17 +17,64 @@
   const REMOTE_ID = PLAYER_ID === 'Man' ? 'Boy' : 'Man';
   const IS_MAN = PLAYER_ID === 'Man';
   const SOLO = new URLSearchParams(window.location.search).get('solo') === '1';
+  const LOBBER_DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
-  const W = 900;
-  const H = 520;
-  const GROUND_Y = 458;
-  const SLING = { x: 128, y: 372 };
+  /** Verbose 2P / MQTT trace — add ?debug=1 to the URL. */
+  function dlog() {
+    if (LOBBER_DEBUG) {
+      const args = Array.prototype.slice.call(arguments);
+      args.unshift(`[Lobber:${PLAYER_ID}]`);
+      console.log.apply(console, args);
+    }
+  }
+  /** Always-on breadcrumbs for connection issues (lightweight). */
+  function ilog() {
+    const args = Array.prototype.slice.call(arguments);
+    const ts = new Date().toISOString().slice(11, 23);
+    args.unshift(ts, `[Lobber:${PLAYER_ID}]`);
+    console.log.apply(console, args);
+  }
+
+  const CANVAS_W = 900;
+  const CANVAS_H = 520;
+  let WORLD_W = 900;
+  let WORLD_H = 520;
+  let GROUND_Y = 458;
+  let SLING = { x: 128, y: 372 };
   const GRAVITY = 0.4;
   const MAX_PULL = 138;
   const MIN_PULL = 12;
   const BASE_POWER = 0.185;
   const PR = 21;
   const SPIN_BASE = 7.5;
+
+  function cloneTowers(t) {
+    return t.map((b) => Object.assign({}, b));
+  }
+
+  function worldShotScale() {
+    return Math.pow(WORLD_W / 900, 0.38);
+  }
+
+  function effectivePR() {
+    return PR * Math.pow(WORLD_W / 900, 0.12);
+  }
+
+  function splashRadiusWorld() {
+    return 96 * (WORLD_W / 900);
+  }
+
+  function maxPullWorld() {
+    return MAX_PULL * Math.min(1.35, WORLD_W / 900);
+  }
+
+  function minPullWorld() {
+    return MIN_PULL * (WORLD_W / 900);
+  }
+
+  function slingScale() {
+    return WORLD_W / 900;
+  }
   const REST_FRICTION = 0.9;
   const BOUNCE_DAMP = 0.52;
 
@@ -72,27 +119,183 @@
     };
   }
 
-  function defaultTowers() {
-    const base = GROUND_Y;
-    return [
-      { id: 0, x: 540, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
-      { id: 1, x: 598, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
-      { id: 2, x: 656, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
-      { id: 3, x: 714, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
-      { id: 4, x: 575, y: base - 136, w: 54, h: 54, hp: 1, kind: 'villain', pts: 420, emoji: '🐷' },
-      { id: 5, x: 640, y: base - 136, w: 54, h: 54, hp: 1, kind: 'villain', pts: 480, emoji: '👹' },
-      { id: 6, x: 705, y: base - 136, w: 54, h: 54, hp: 1, kind: 'villain', pts: 450, emoji: '🦇' },
-      { id: 7, x: 610, y: base - 200, w: 44, h: 44, hp: 2, kind: 'stone', pts: 130, emoji: '' },
-      { id: 8, x: 668, y: base - 200, w: 44, h: 44, hp: 2, kind: 'stone', pts: 130, emoji: '' },
-      { id: 9, x: 639, y: base - 252, w: 50, h: 50, hp: 1, kind: 'villain', pts: 600, emoji: '👿' },
-    ];
+  /**
+   * Five Angry-Birds-style stages: wider/taller world = more “zoomed out” on the same canvas.
+   * Coordinates are in world space; rendering scales world → 900×520 canvas.
+   */
+  const LEVELS = [
+    {
+      id: 0,
+      name: '1 · Training',
+      worldW: 900,
+      worldH: 520,
+      towers(base) {
+        return [
+          { id: 10, x: 540, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
+          { id: 11, x: 598, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
+          { id: 12, x: 656, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
+          { id: 13, x: 714, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
+          { id: 14, x: 575, y: base - 136, w: 54, h: 54, hp: 1, kind: 'villain', pts: 420, emoji: '🐷' },
+          { id: 15, x: 640, y: base - 136, w: 54, h: 54, hp: 1, kind: 'villain', pts: 480, emoji: '👹' },
+          { id: 16, x: 705, y: base - 136, w: 54, h: 54, hp: 1, kind: 'villain', pts: 450, emoji: '🦇' },
+          { id: 17, x: 610, y: base - 200, w: 44, h: 44, hp: 2, kind: 'stone', pts: 130, emoji: '' },
+          { id: 18, x: 668, y: base - 200, w: 44, h: 44, hp: 2, kind: 'stone', pts: 130, emoji: '' },
+          { id: 19, x: 639, y: base - 252, w: 50, h: 50, hp: 1, kind: 'villain', pts: 600, emoji: '👿' },
+        ];
+      },
+    },
+    {
+      id: 1,
+      name: '2 · Outpost',
+      worldW: 1100,
+      worldH: 520,
+      towers(base) {
+        const w = 1100;
+        const rx = w - 420;
+        return [
+          { id: 20, x: rx, y: base - 52, w: 44, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
+          { id: 21, x: rx + 52, y: base - 52, w: 44, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
+          { id: 22, x: rx + 104, y: base - 52, w: 44, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
+          { id: 23, x: rx + 156, y: base - 52, w: 44, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
+          { id: 24, x: rx + 26, y: base - 110, w: 50, h: 50, hp: 1, kind: 'villain', pts: 400, emoji: '🐗' },
+          { id: 25, x: rx + 92, y: base - 110, w: 50, h: 50, hp: 1, kind: 'villain', pts: 400, emoji: '🐷' },
+          { id: 26, x: rx + 158, y: base - 110, w: 50, h: 50, hp: 1, kind: 'villain', pts: 400, emoji: '🦇' },
+          { id: 27, x: rx + 60, y: base - 168, w: 42, h: 42, hp: 3, kind: 'stone', pts: 150, emoji: '' },
+          { id: 28, x: rx + 118, y: base - 168, w: 42, h: 42, hp: 3, kind: 'stone', pts: 150, emoji: '' },
+          { id: 29, x: rx + 300, y: base - 120, w: 40, h: 100, hp: 2, kind: 'wood', pts: 90, emoji: '' },
+          { id: 30, x: rx + 270, y: base - 220, w: 48, h: 48, hp: 1, kind: 'villain', pts: 520, emoji: '👹' },
+        ];
+      },
+    },
+    {
+      id: 2,
+      name: '3 · Fort',
+      worldW: 1320,
+      worldH: 540,
+      towers(base) {
+        const w = 1320;
+        const a = w - 520;
+        const b = w - 280;
+        return [
+          { id: 40, x: a, y: base - 48, w: 40, h: 48, hp: 2, kind: 'wood', pts: 70, emoji: '' },
+          { id: 41, x: a + 48, y: base - 48, w: 40, h: 48, hp: 2, kind: 'wood', pts: 70, emoji: '' },
+          { id: 42, x: a + 96, y: base - 48, w: 40, h: 48, hp: 2, kind: 'wood', pts: 70, emoji: '' },
+          { id: 43, x: a + 24, y: base - 100, w: 46, h: 46, hp: 1, kind: 'villain', pts: 380, emoji: '🐷' },
+          { id: 44, x: a + 82, y: base - 100, w: 46, h: 46, hp: 1, kind: 'villain', pts: 380, emoji: '🦎' },
+          { id: 45, x: a + 48, y: base - 158, w: 40, h: 40, hp: 4, kind: 'stone', pts: 160, emoji: '' },
+          { id: 46, x: b, y: base - 56, w: 44, h: 56, hp: 2, kind: 'wood', pts: 85, emoji: '' },
+          { id: 47, x: b + 52, y: base - 56, w: 44, h: 56, hp: 2, kind: 'wood', pts: 85, emoji: '' },
+          { id: 48, x: b + 26, y: base - 120, w: 52, h: 52, hp: 1, kind: 'villain', pts: 440, emoji: '👿' },
+          { id: 49, x: b + 10, y: base - 188, w: 38, h: 38, hp: 3, kind: 'stone', pts: 140, emoji: '' },
+          { id: 50, x: b + 58, y: base - 188, w: 38, h: 38, hp: 3, kind: 'stone', pts: 140, emoji: '' },
+          { id: 51, x: b + 34, y: base - 240, w: 48, h: 48, hp: 1, kind: 'villain', pts: 650, emoji: '🐉' },
+        ];
+      },
+    },
+    {
+      id: 3,
+      name: '4 · Citadel',
+      worldW: 1560,
+      worldH: 560,
+      towers(base) {
+        const w = 1560;
+        const c1 = w - 620;
+        const c2 = w - 400;
+        const c3 = w - 200;
+        return [
+          { id: 60, x: c1, y: base - 44, w: 38, h: 44, hp: 2, kind: 'wood', pts: 65, emoji: '' },
+          { id: 61, x: c1 + 44, y: base - 44, w: 38, h: 44, hp: 2, kind: 'wood', pts: 65, emoji: '' },
+          { id: 62, x: c1 + 88, y: base - 44, w: 38, h: 44, hp: 2, kind: 'wood', pts: 65, emoji: '' },
+          { id: 63, x: c1 + 44, y: base - 96, w: 44, h: 44, hp: 1, kind: 'villain', pts: 360, emoji: '🐷' },
+          { id: 64, x: c1 + 20, y: base - 150, w: 36, h: 36, hp: 4, kind: 'stone', pts: 170, emoji: '' },
+          { id: 65, x: c1 + 68, y: base - 150, w: 36, h: 36, hp: 4, kind: 'stone', pts: 170, emoji: '' },
+          { id: 66, x: c1 + 44, y: base - 200, w: 46, h: 46, hp: 1, kind: 'villain', pts: 700, emoji: '👹' },
+          { id: 67, x: c2, y: base - 50, w: 42, h: 50, hp: 2, kind: 'wood', pts: 80, emoji: '' },
+          { id: 68, x: c2 + 54, y: base - 50, w: 42, h: 50, hp: 2, kind: 'wood', pts: 80, emoji: '' },
+          { id: 69, x: c2 + 27, y: base - 110, w: 48, h: 48, hp: 1, kind: 'villain', pts: 420, emoji: '🦇' },
+          { id: 70, x: c3, y: base - 40, w: 36, h: 120, hp: 2, kind: 'wood', pts: 95, emoji: '' },
+          { id: 71, x: c3 - 8, y: base - 175, w: 52, h: 52, hp: 1, kind: 'villain', pts: 480, emoji: '🐗' },
+          { id: 72, x: c3 + 48, y: base - 175, w: 44, h: 44, hp: 2, kind: 'stone', pts: 135, emoji: '' },
+        ];
+      },
+    },
+    {
+      id: 4,
+      name: '5 · Stronghold',
+      worldW: 1780,
+      worldH: 600,
+      towers(base) {
+        const w = 1780;
+        const z = w - 720;
+        const y2 = w - 460;
+        const y3 = w - 240;
+        return [
+          { id: 80, x: z, y: base - 40, w: 36, h: 40, hp: 2, kind: 'wood', pts: 60, emoji: '' },
+          { id: 81, x: z + 40, y: base - 40, w: 36, h: 40, hp: 2, kind: 'wood', pts: 60, emoji: '' },
+          { id: 82, x: z + 80, y: base - 40, w: 36, h: 40, hp: 2, kind: 'wood', pts: 60, emoji: '' },
+          { id: 83, x: z + 120, y: base - 40, w: 36, h: 40, hp: 2, kind: 'wood', pts: 60, emoji: '' },
+          { id: 84, x: z + 20, y: base - 88, w: 40, h: 40, hp: 1, kind: 'villain', pts: 320, emoji: '🐷' },
+          { id: 85, x: z + 64, y: base - 88, w: 40, h: 40, hp: 1, kind: 'villain', pts: 320, emoji: '🐷' },
+          { id: 86, x: z + 108, y: base - 88, w: 40, h: 40, hp: 1, kind: 'villain', pts: 320, emoji: '🐷' },
+          { id: 87, x: z + 44, y: base - 136, w: 34, h: 34, hp: 5, kind: 'stone', pts: 180, emoji: '' },
+          { id: 88, x: z + 86, y: base - 136, w: 34, h: 34, hp: 5, kind: 'stone', pts: 180, emoji: '' },
+          { id: 89, x: z + 55, y: base - 188, w: 44, h: 44, hp: 1, kind: 'villain', pts: 800, emoji: '👿' },
+          { id: 90, x: y2, y: base - 48, w: 40, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
+          { id: 91, x: y2 + 50, y: base - 48, w: 40, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
+          { id: 92, x: y2 + 24, y: base - 108, w: 48, h: 48, hp: 1, kind: 'villain', pts: 500, emoji: '🐉' },
+          { id: 93, x: y2 + 8, y: base - 168, w: 38, h: 38, hp: 3, kind: 'stone', pts: 145, emoji: '' },
+          { id: 94, x: y3, y: base - 44, w: 38, h: 44, hp: 2, kind: 'wood', pts: 70, emoji: '' },
+          { id: 95, x: y3 + 44, y: base - 44, w: 38, h: 44, hp: 2, kind: 'wood', pts: 70, emoji: '' },
+          { id: 96, x: y3 + 22, y: base - 100, w: 46, h: 46, hp: 1, kind: 'villain', pts: 450, emoji: '🦇' },
+          { id: 97, x: y3 + 6, y: base - 158, w: 50, h: 50, hp: 1, kind: 'villain', pts: 580, emoji: '👹' },
+        ];
+      },
+    },
+  ];
+
+  function levelGroundY(L) {
+    return Math.floor(L.worldH * (458 / 520));
   }
 
-  function cloneTowers(t) {
-    return t.map((b) => Object.assign({}, b));
+  function levelSling(L) {
+    const gy = levelGroundY(L);
+    return { x: Math.round(L.worldW * (128 / 900)), y: gy - 86 };
   }
 
-  let towers = defaultTowers();
+  function towersForLevel(levelIndex) {
+    const L = LEVELS[levelIndex] || LEVELS[0];
+    const base = levelGroundY(L);
+    return L.towers(base);
+  }
+
+  function loadLevel(levelIndex) {
+    const idx = Math.max(0, Math.min(LEVELS.length - 1, levelIndex | 0));
+    const L = LEVELS[idx];
+    currentLevelIndex = idx;
+    WORLD_W = L.worldW;
+    WORLD_H = L.worldH;
+    GROUND_Y = levelGroundY(L);
+    SLING = levelSling(L);
+    towers = cloneTowers(towersForLevel(idx));
+    dlog('loadLevel', L.name, { worldW: WORLD_W, worldH: WORLD_H, GROUND_Y, SLING, blocks: towers.length });
+    refreshGameInfo();
+  }
+
+  function refreshGameInfo() {
+    const el = document.getElementById('gameInfo');
+    if (!el) {
+      return;
+    }
+    const L = LEVELS[currentLevelIndex] || LEVELS[0];
+    el.innerHTML = `GAME: <span class="highlight">${GAME_ID}</span> · YOU: <span class="highlight">${PLAYER_ID}</span> · ${IS_MAN ? 'HOST' : 'JOIN'} · <span class="highlight">${L.name}</span> <span style="opacity:0.75">(${WORLD_W}×${WORLD_H})</span>`;
+  }
+
+  let currentLevelIndex = 0;
+  /** In 2P, set from Man’s pick payload so Boy matches host stage. */
+  let hostLevelId = null;
+
+  let towers = [];
+  loadLevel(0);
   let debris = [];
   let scoreMan = 0;
   let scoreBoy = 0;
@@ -145,13 +348,13 @@
 
   function syncCanvasSize() {
     const wrap = document.getElementById('boardWrap');
-    const maxW = Math.max(240, (wrap && wrap.clientWidth) || W);
-    const maxH = Math.max(200, (wrap && wrap.clientHeight) || H);
-    const s = Math.min(maxW / W, maxH / H, 1);
-    canvas.style.width = `${Math.floor(W * s)}px`;
-    canvas.style.height = `${Math.floor(H * s)}px`;
-    canvas.width = W;
-    canvas.height = H;
+    const maxW = Math.max(240, (wrap && wrap.clientWidth) || CANVAS_W);
+    const maxH = Math.max(200, (wrap && wrap.clientHeight) || CANVAS_H);
+    const s = Math.min(maxW / CANVAS_W, maxH / CANVAS_H, 1);
+    canvas.style.width = `${Math.floor(CANVAS_W * s)}px`;
+    canvas.style.height = `${Math.floor(CANVAS_H * s)}px`;
+    canvas.width = CANVAS_W;
+    canvas.height = CANVAS_H;
   }
   syncCanvasSize();
   window.addEventListener('resize', syncCanvasSize);
@@ -164,7 +367,12 @@
     const r = canvas.getBoundingClientRect();
     const sx = canvas.width / r.width;
     const sy = canvas.height / r.height;
-    return { x: (clientX - r.left) * sx, y: (clientY - r.top) * sy };
+    const cx = (clientX - r.left) * sx;
+    const cy = (clientY - r.top) * sy;
+    return {
+      x: (cx / CANVAS_W) * WORLD_W,
+      y: (cy / CANVAS_H) * WORLD_H,
+    };
   }
 
   function setScoreText() {
@@ -226,6 +434,48 @@
   let waitPartnerSince = Date.now();
   const JOIN_WAIT_MS = 14000;
 
+  let selectedLevelIndex = 0;
+  const levelButtonsEl = document.getElementById('levelButtons');
+
+  function levelForNewMatch() {
+    if (SOLO || playAlone || IS_MAN) {
+      return selectedLevelIndex;
+    }
+    return hostLevelId != null ? hostLevelId : selectedLevelIndex;
+  }
+
+  function syncLevelButtonHighlight() {
+    if (!levelButtonsEl) {
+      return;
+    }
+    const show = IS_MAN ? selectedLevelIndex : hostLevelId != null ? hostLevelId : selectedLevelIndex;
+    levelButtonsEl.querySelectorAll('button[data-level]').forEach((btn) => {
+      const n = parseInt(btn.getAttribute('data-level'), 10);
+      btn.classList.toggle('selected', n === show);
+    });
+  }
+
+  if (levelButtonsEl) {
+    LEVELS.forEach((L, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('data-level', String(i));
+      b.textContent = L.name;
+      b.title = `${L.name} — world ${L.worldW}×${L.worldH}`;
+      b.addEventListener('click', () => {
+        if (localLocked) {
+          return;
+        }
+        selectedLevelIndex = i;
+        loadLevel(i);
+        syncLevelButtonHighlight();
+        dlog('level selected', { i, name: L.name });
+      });
+      levelButtonsEl.appendChild(b);
+    });
+    syncLevelButtonHighlight();
+  }
+
   HERO_ROSTER.forEach((h) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -270,11 +520,13 @@
       phase = 'aim';
       pickOverlay.classList.add('hidden');
       canvas.classList.remove('lobber-wait');
-      towers = defaultTowers();
+      loadLevel(levelForNewMatch());
       debris = [];
+      syncLevelButtonHighlight();
       turn = SOLO || playAlone ? PLAYER_ID : 'Man';
       setTurnLine();
       setScoreText();
+      ilog('match start', { level: currentLevelIndex, name: LEVELS[currentLevelIndex].name, world: `${WORLD_W}×${WORLD_H}`, twoPlayer: !(SOLO || playAlone) });
       if (IS_MAN && !SOLO && !playAlone) {
         publishSync();
       }
@@ -285,6 +537,7 @@
     if (playAlone || SOLO) {
       return;
     }
+    ilog('enter 1-player fallback', { reason: 'partner_wait_timeout', joinWaitMs: JOIN_WAIT_MS, level: selectedLevelIndex });
     playAlone = true;
     remoteEmoji = '🌐';
     remoteLocked = true;
@@ -301,7 +554,9 @@
     if (SOLO || !client || !client.connected) {
       return;
     }
-    client.publish(`lobber/${GAME_ID}/${PLAYER_ID}/pick`, JSON.stringify({ emoji }), { qos: 0 });
+    const payload = { emoji, levelId: selectedLevelIndex };
+    client.publish(`lobber/${GAME_ID}/${PLAYER_ID}/pick`, JSON.stringify(payload), { qos: 0 });
+    dlog('tx pick', payload);
   }
 
   function publishStatus(s) {
@@ -309,13 +564,16 @@
       return;
     }
     client.publish(`lobber/${GAME_ID}/${PLAYER_ID}/status`, s, { qos: 0 });
+    dlog('tx status', s);
   }
 
   function publishJoin() {
     if (!client || !client.connected || IS_MAN) {
       return;
     }
-    client.publish(`lobber/${GAME_ID}/Boy/join`, JSON.stringify({ t: Date.now() }), { qos: 0 });
+    const topic = `lobber/${GAME_ID}/Boy/join`;
+    client.publish(topic, JSON.stringify({ t: Date.now() }), { qos: 0 });
+    ilog('tx Boy/join', { topic, seat: PLAYER_ID });
   }
 
   function publishSync() {
@@ -324,6 +582,9 @@
     }
     const payload = {
       v: syncVer++,
+      levelId: currentLevelIndex,
+      worldW: WORLD_W,
+      worldH: WORLD_H,
       towers: cloneTowers(towers),
       debris: [],
       scoreMan,
@@ -333,11 +594,15 @@
       shotSeq,
     };
     client.publish(`lobber/${GAME_ID}/Man/sync`, JSON.stringify(payload), { qos: 0 });
+    dlog('tx sync', { v: payload.v, levelId: payload.levelId, blocks: payload.towers.length, turn, phase, shotSeq });
   }
 
   function applySync(data) {
     if (!data || !data.towers) {
       return;
+    }
+    if (typeof data.levelId === 'number' && data.levelId >= 0 && data.levelId < LEVELS.length) {
+      loadLevel(data.levelId);
     }
     towers = cloneTowers(data.towers);
     scoreMan = data.scoreMan | 0;
@@ -355,6 +620,15 @@
     setScoreText();
     setTurnLine();
     bumpPartnerSeen();
+    ilog('applySync', {
+      levelId: data.levelId,
+      blocks: data.towers.length,
+      turn: data.turn,
+      phase: data.phase,
+      shotSeq: data.shotSeq,
+      scores: { scoreMan: data.scoreMan, scoreBoy: data.scoreBoy },
+    });
+    syncLevelButtonHighlight();
   }
 
   function publishShot(vx, vy, emoji) {
@@ -368,6 +642,7 @@
         seq: shotSeq,
       });
       client.publish(`lobber/${GAME_ID}/${PLAYER_ID}/shot`, payload, { qos: 0 });
+      dlog('tx shot', { seq: shotSeq, emoji, vx: Math.round(vx * 100) / 100, vy: Math.round(vy * 100) / 100 });
     }
     startFlight(vx, vy, emoji, PLAYER_ID);
   }
@@ -383,6 +658,7 @@
     });
     if (!SOLO && !playAlone && client && client.connected) {
       client.publish(`lobber/${GAME_ID}/${PLAYER_ID}/finish`, payload, { qos: 0 });
+      dlog('tx finish', { seq: shotSeq, nextTurn: turn });
     }
     if (IS_MAN && !SOLO && !playAlone && client && client.connected) {
       publishSync();
@@ -464,7 +740,7 @@
         continue;
       }
       const dist = Math.hypot(b.x + b.w / 2 - (broken.x + broken.w / 2), b.y + b.h / 2 - (broken.y + broken.h / 2));
-      if (dist < 96) {
+      if (dist < splashRadiusWorld()) {
         b.hp -= 1;
         if (b.hp <= 0) {
           addScoreForBreak(b);
@@ -498,7 +774,7 @@
       if (b.hp <= 0) {
         continue;
       }
-      if (!circleRectHit(p.x, p.y, PR, b)) {
+      if (!circleRectHit(p.x, p.y, effectivePR(), b)) {
         continue;
       }
       const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
@@ -506,7 +782,8 @@
       let dx = p.x - nx;
       let dy = p.y - ny;
       const d = Math.hypot(dx, dy) || 0.001;
-      const pen = PR - d;
+      const er = effectivePR();
+      const pen = er - d;
       p.x += (dx / d) * pen * 0.55;
       p.y += (dy / d) * pen * 0.55;
       dx /= d;
@@ -545,7 +822,7 @@
       d.x += d.vx * dt * 60;
       d.y += d.vy * dt * 60;
       d.rot += d.spin * dt;
-      if (d.ttl <= 0 || d.y > H + 40) {
+      if (d.ttl <= 0 || d.y > WORLD_H + 60) {
         debris.splice(i, 1);
       }
     }
@@ -561,8 +838,9 @@
     p.y += p.vy * dt * 60;
     p.rot += (p.spin || SPIN_BASE) * dt;
 
-    if (p.y + PR >= GROUND_Y) {
-      p.y = GROUND_Y - PR;
+    const er = effectivePR();
+    if (p.y + er >= GROUND_Y) {
+      p.y = GROUND_Y - er;
       p.vy *= -0.36;
       p.vx *= REST_FRICTION;
       if (Math.abs(p.vy) < 0.95) {
@@ -573,8 +851,8 @@
     resolveHits(p);
 
     const spd = Math.hypot(p.vx, p.vy);
-    const grounded = p.y + PR >= GROUND_Y - 0.5;
-    const oob = p.x > W + 120 || p.x < -120;
+    const grounded = p.y + er >= GROUND_Y - 0.5;
+    const oob = p.x > WORLD_W + 140 || p.x < -140;
     const settled = grounded && spd < 2.05;
     if (oob || settled) {
       const shooter = shooterThisRound;
@@ -594,19 +872,19 @@
   }
 
   function drawSkyGround() {
-    const g = ctx.createLinearGradient(0, 0, 0, H);
+    const g = ctx.createLinearGradient(0, 0, 0, WORLD_H);
     g.addColorStop(0, '#5eb8ff');
     g.addColorStop(0.5, '#87ceeb');
     g.addColorStop(1, '#6abe7a');
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     ctx.fillStyle = '#3d6848';
-    ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+    ctx.fillRect(0, GROUND_Y, WORLD_W, WORLD_H - GROUND_Y);
     ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(2, (3 * WORLD_W) / 900);
     ctx.beginPath();
     ctx.moveTo(0, GROUND_Y);
-    ctx.lineTo(W, GROUND_Y);
+    ctx.lineTo(WORLD_W, GROUND_Y);
     ctx.stroke();
   }
 
@@ -625,7 +903,7 @@
       }
       ctx.fillRect(b.x, b.y, b.w, b.h);
       ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = Math.max(2, (2.5 * WORLD_W) / 900);
       ctx.strokeRect(b.x, b.y, b.w, b.h);
       if (b.kind === 'villain' && b.emoji) {
         ctx.font = `${Math.min(b.w, b.h) * 0.62}px serif`;
@@ -641,7 +919,7 @@
       ctx.save();
       ctx.translate(d.x, d.y);
       ctx.rotate(d.rot);
-      ctx.font = '22px serif';
+      ctx.font = `${Math.round(22 * (WORLD_W / 900))}px serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(d.emoji, 0, 0);
@@ -651,7 +929,7 @@
 
   function drawSlingshotBand(ax, ay, bx, by) {
     ctx.strokeStyle = 'rgba(35, 28, 22, 0.88)';
-    ctx.lineWidth = 7;
+    ctx.lineWidth = Math.max(5, 7 * slingScale());
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(ax, ay);
@@ -660,13 +938,14 @@
   }
 
   function drawSlingshotPost() {
+    const k = slingScale();
     ctx.strokeStyle = '#3a3028';
-    ctx.lineWidth = 9;
+    ctx.lineWidth = Math.max(6, 9 * k);
     ctx.beginPath();
-    ctx.moveTo(SLING.x - 20, SLING.y + 42);
-    ctx.lineTo(SLING.x - 8, SLING.y - 28);
-    ctx.moveTo(SLING.x + 20, SLING.y + 42);
-    ctx.lineTo(SLING.x + 8, SLING.y - 28);
+    ctx.moveTo(SLING.x - 20 * k, SLING.y + 42 * k);
+    ctx.lineTo(SLING.x - 8 * k, SLING.y - 28 * k);
+    ctx.moveTo(SLING.x + 20 * k, SLING.y + 42 * k);
+    ctx.lineTo(SLING.x + 8 * k, SLING.y - 28 * k);
     ctx.stroke();
   }
 
@@ -674,7 +953,7 @@
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rot);
-    ctx.font = `${PR * 2}px serif`;
+    ctx.font = `${Math.round(PR * 2 * slingScale())}px serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(emoji, 0, 2);
@@ -688,21 +967,22 @@
     const dx = SLING.x - dragCur.x;
     const dy = SLING.y - dragCur.y;
     const len = Math.hypot(dx, dy);
-    if (len < MIN_PULL) {
+    if (len < minPullWorld()) {
       return;
     }
     const ux = dx / len;
     const uy = dy / len;
+    const step = 55 * slingScale();
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.setLineDash([6, 8]);
-    ctx.lineWidth = 2;
+    ctx.setLineDash([6 * slingScale(), 8 * slingScale()]);
+    ctx.lineWidth = Math.max(2, 2 * slingScale());
     ctx.beginPath();
     let x = SLING.x;
     let y = SLING.y;
     ctx.moveTo(x, y);
     for (let i = 0; i < 5; i++) {
-      x += ux * 55;
-      y += uy * 55 + i * 8;
+      x += ux * step;
+      y += uy * step + i * 8 * slingScale();
       ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -710,11 +990,18 @@
   }
 
   function drawScene() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.save();
+    ctx.scale(CANVAS_W / WORLD_W, CANVAS_H / WORLD_H);
     drawSkyGround();
     drawTowers();
     drawDebris();
 
     const aimEmoji = localEmoji || '🙂';
+    const sk = slingScale();
+    const bandL = 16 * sk;
+    const bandY = 20 * sk;
     if (phase === 'aim' || phase === 'pick') {
       drawSlingshotPost();
       const restX = SLING.x;
@@ -724,12 +1011,12 @@
       if (dragging && activeTurn() === PLAYER_ID && phase === 'aim') {
         drawX = dragCur.x;
         drawY = dragCur.y;
-        drawSlingshotBand(SLING.x - 16, SLING.y - 20, drawX, drawY);
-        drawSlingshotBand(SLING.x + 16, SLING.y - 20, drawX, drawY);
+        drawSlingshotBand(SLING.x - bandL, SLING.y - bandY, drawX, drawY);
+        drawSlingshotBand(SLING.x + bandL, SLING.y - bandY, drawX, drawY);
         drawAimVector();
       } else {
-        drawSlingshotBand(SLING.x - 16, SLING.y - 20, restX, restY);
-        drawSlingshotBand(SLING.x + 16, SLING.y - 20, restX, restY);
+        drawSlingshotBand(SLING.x - bandL, SLING.y - bandY, restX, restY);
+        drawSlingshotBand(SLING.x + bandL, SLING.y - bandY, restX, restY);
       }
       if (phase === 'aim' && activeTurn() === PLAYER_ID) {
         drawProjectileAt(drawX, drawY, 0, aimEmoji);
@@ -738,12 +1025,13 @@
       }
     } else if (phase === 'flight' && projectile) {
       drawSlingshotPost();
-      drawSlingshotBand(SLING.x - 16, SLING.y - 20, SLING.x, SLING.y);
-      drawSlingshotBand(SLING.x + 16, SLING.y - 20, SLING.x, SLING.y);
+      drawSlingshotBand(SLING.x - bandL, SLING.y - bandY, SLING.x, SLING.y);
+      drawSlingshotBand(SLING.x + bandL, SLING.y - bandY, SLING.x, SLING.y);
       drawProjectileAt(projectile.x, projectile.y, projectile.rot, projectile.emoji);
     } else {
       drawSlingshotPost();
     }
+    ctx.restore();
   }
 
   let lastT = performance.now();
@@ -762,7 +1050,7 @@
       return;
     }
     const d = Math.hypot(wx - SLING.x, wy - SLING.y);
-    if (d < 56) {
+    if (d < 56 * Math.sqrt(slingScale())) {
       dragging = true;
       dragCur = { x: wx, y: wy };
     }
@@ -775,9 +1063,10 @@
     let dx = wx - SLING.x;
     let dy = wy - SLING.y;
     const len = Math.hypot(dx, dy) || 1;
-    if (len > MAX_PULL) {
-      dx = (dx / len) * MAX_PULL;
-      dy = (dy / len) * MAX_PULL;
+    const mp = maxPullWorld();
+    if (len > mp) {
+      dx = (dx / len) * mp;
+      dy = (dy / len) * mp;
     }
     dragCur = { x: SLING.x + dx, y: SLING.y + dy };
   }
@@ -790,14 +1079,15 @@
     const dx = SLING.x - dragCur.x;
     const dy = SLING.y - dragCur.y;
     const len = Math.hypot(dx, dy);
-    if (len < MIN_PULL) {
+    const mp = maxPullWorld();
+    if (len < minPullWorld()) {
       dragCur = { x: SLING.x, y: SLING.y };
       return;
     }
     const emoji = localEmoji || '🙂';
     const pow = powerForEmoji(emoji);
-    const pullT = Math.min(1, len / MAX_PULL);
-    const speed = BASE_POWER * (0.55 + 0.65 * pullT) * (pow.vMul || 1);
+    const pullT = Math.min(1, len / mp);
+    const speed = BASE_POWER * (0.55 + 0.65 * pullT) * (pow.vMul || 1) * worldShotScale();
     const vx = dx * speed;
     const vy = dy * speed;
     publishShot(vx, vy, emoji);
@@ -845,8 +1135,7 @@
     endDrag();
   });
 
-  document.getElementById('gameInfo').innerHTML =
-    `GAME: <span class="highlight">${GAME_ID}</span> · YOU: <span class="highlight">${PLAYER_ID}</span> · ${IS_MAN ? 'HOST' : 'JOIN'}`;
+  refreshGameInfo();
   document.getElementById('brokerInfo').innerHTML =
     `MQTT WS: <span class="highlight">${BROKER_URL}</span>`;
 
@@ -860,9 +1149,14 @@
 
   function bumpPartnerSeen() {
     lastPartnerMsg = Date.now();
+    const was = partnerOk;
     partnerOk = true;
     partnerTrying = false;
     updateConn();
+    if (!was) {
+      ilog('partner linked', { lastPartnerMsg, seat: PLAYER_ID });
+    }
+    dlog('bumpPartnerSeen');
   }
 
   function updateConn() {
@@ -909,37 +1203,51 @@
         remoteStatus = raw.toString();
         updateStatusDisplay();
         bumpPartnerSeen();
+        dlog('rx status', { from: who, text: remoteStatus });
         return;
       }
       if (kind === 'pick') {
         remoteEmoji = (data && data.emoji) || '🙂';
         remoteLocked = true;
+        if (who === 'Man' && data && typeof data.levelId === 'number') {
+          hostLevelId = Math.max(0, Math.min(LEVELS.length - 1, data.levelId | 0));
+          if (!localLocked) {
+            loadLevel(hostLevelId);
+            syncLevelButtonHighlight();
+          }
+        }
         waitPartnerSince = Date.now();
         updatePickStatus();
         tryBeginMatch();
         bumpPartnerSeen();
+        ilog('rx pick', { from: who, emoji: remoteEmoji, levelId: data && data.levelId, bothReady: localLocked && remoteLocked });
+        dlog('rx pick payload', data);
         return;
       }
       if (kind === 'shot') {
+        dlog('rx shot', { from: who, seq: data && data.seq, emoji: data && data.emoji });
         startFlight(data.vx, data.vy, data.emoji || '🙂', who);
         bumpPartnerSeen();
         return;
       }
       if (kind === 'finish') {
+        dlog('rx finish', { from: who, seq: data && data.seq, nextTurn: data && data.nextTurn });
         applyFinish(data);
         return;
       }
       if (kind === 'sync' && who === 'Man' && !IS_MAN) {
+        dlog('rx sync incoming', { v: data && data.v, levelId: data && data.levelId });
         applySync(data);
         return;
       }
       if (kind === 'join' && who === 'Boy' && IS_MAN) {
+        ilog('rx join from Boy → sending sync', { levelId: currentLevelIndex, phase });
         publishSync();
         bumpPartnerSeen();
         return;
       }
     } catch (err) {
-      /* ignore */
+      ilog('onRemoteMessage parse error', { who, kind, err: String(err) });
     }
   }
 
@@ -949,9 +1257,21 @@
       localConnecting = false;
       playAlone = true;
       updateConn();
+      ilog('solo mode — MQTT skipped');
       return;
     }
     const clientId = `lobber_${GAME_ID}_${PLAYER_ID}_${Math.random().toString(36).slice(2, 11)}`;
+    ilog('mqtt start', {
+      broker: BROKER_URL,
+      clientId,
+      gameId: GAME_ID,
+      seat: PLAYER_ID,
+      topicPattern: `lobber/${GAME_ID}/#`,
+      debugVerbose: LOBBER_DEBUG,
+    });
+    if (!LOBBER_DEBUG) {
+      console.info(`[Lobber:${PLAYER_ID}] Tip: add ?debug=1 to URL for verbose MQTT logs`);
+    }
     client = mqtt.connect(BROKER_URL, {
       clientId,
       reconnectPeriod: 2500,
@@ -961,9 +1281,12 @@
       localConnected = true;
       localConnecting = false;
       updateConn();
+      ilog('mqtt connected', { clientId });
       client.subscribe(`lobber/${GAME_ID}/#`, { qos: 0 }, (err) => {
         if (err) {
-          console.warn('lobber subscribe', err);
+          ilog('mqtt subscribe FAILED', err);
+        } else {
+          ilog('mqtt subscribed', { filter: `lobber/${GAME_ID}/#` });
         }
       });
       if (!IS_MAN && !joinSent) {
@@ -972,6 +1295,7 @@
       }
       if (localLocked && localEmoji) {
         publishPick(localEmoji);
+        ilog('re-sent pick after reconnect', { emoji: localEmoji, levelId: selectedLevelIndex });
       }
       if (localStatus !== '—') {
         publishStatus(localStatus);
@@ -980,24 +1304,32 @@
         publishSync();
       }
     });
+    client.on('error', (err) => {
+      ilog('mqtt error', err);
+    });
     client.on('close', () => {
+      ilog('mqtt close');
       localConnected = false;
       localConnecting = false;
       updateConn();
     });
     client.on('reconnect', () => {
+      ilog('mqtt reconnecting…');
       localConnected = false;
       localConnecting = true;
       updateConn();
     });
     client.on('offline', () => {
+      ilog('mqtt offline');
       localConnected = false;
       localConnecting = false;
       updateConn();
     });
     client.on('message', (topic, message) => {
+      dlog('mqtt message', topic, message.length, 'bytes');
       const parts = topic.split('/');
       if (parts.length < 4) {
+        dlog('skip topic (short)', topic);
         return;
       }
       const who = parts[2];

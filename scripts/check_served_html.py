@@ -1,4 +1,10 @@
-"""Basic smoke check: served HTML returns 200 and local static refs resolve."""
+"""Basic smoke check: served HTML returns 200 and local static refs resolve.
+
+For browser console / JS runtime issues, run (with Playwright installed):
+
+  pip install playwright && playwright install chromium
+  python scripts/check_browser_console.py http://127.0.0.1:8000
+"""
 from __future__ import annotations
 
 import re
