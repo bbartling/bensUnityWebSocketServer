@@ -78,6 +78,50 @@
   const REST_FRICTION = 0.9;
   const BOUNCE_DAMP = 0.52;
 
+  function tower(id, x, y, w, h, hp, kind, pts, emoji) {
+    return { id, x, y, w, h, hp, kind, pts: pts || 0, emoji: emoji || '' };
+  }
+
+  /** Indestructible — touching ends the shot (emoji “dies”). */
+  function lavaBar(id, x, y, w, h) {
+    return { id, x, y, w, h, hp: 9999, kind: 'lava', pts: 0, emoji: '' };
+  }
+
+  /**
+   * Stacked pyramid: bottom row has `bottomN` blocks, apex is one villain.
+   * If `lavaBetweenLayers`, thin lava strips sit between every other brick layer.
+   */
+  function pyramidBlocks(cx, base, bottomN, cw, ch, vg, hg, id0, lavaBetweenLayers) {
+    const out = [];
+    let id = id0;
+    for (let r = 0; r < bottomN; r++) {
+      const n = bottomN - r;
+      const rowW = n * cw + (n - 1) * hg;
+      const x0 = cx - rowW / 2;
+      const y = base - ch - r * (ch + vg);
+      for (let c = 0; c < n; c++) {
+        const apex = r === bottomN - 1;
+        if (apex) {
+          out.push(tower(id++, x0 + c * (cw + hg), y, cw, ch, 1, 'villain', 520, '👿'));
+        } else {
+          const band = Math.floor(r / 2);
+          const st = band >= 1 ? 'stone' : 'wood';
+          const hp = st === 'wood' ? 2 : 3;
+          const pts = st === 'wood' ? 72 : 128;
+          out.push(tower(id++, x0 + c * (cw + hg), y, cw, ch, hp, st, pts, ''));
+        }
+      }
+      if (lavaBetweenLayers && r < bottomN - 2 && r % 2 === 1) {
+        const nextN = bottomN - r - 1;
+        const nextRowW = nextN * cw + Math.max(0, nextN - 1) * hg;
+        const lw = Math.max(rowW, nextRowW) * 0.92;
+        const midY = y - vg / 2 - 4;
+        out.push(lavaBar(id++, cx - lw / 2, midY, lw, 8));
+      }
+    }
+    return out;
+  }
+
   /** Human-face heroes — each power affects shot / hits. */
   const HERO_ROSTER = [
     { emoji: '😀', name: 'Zip', desc: '+12% speed', vMul: 1.12, spinMul: 1.2, dmg: 1 },
@@ -120,134 +164,351 @@
   }
 
   /**
-   * Five Angry-Birds-style stages: wider/taller world = more “zoomed out” on the same canvas.
-   * Coordinates are in world space; rendering scales world → 900×520 canvas.
+   * 15 stages — Easy / Medium / Hard / Impossible. Lava blocks end the shot on touch (hero dies).
+   * Wider worlds = more zoomed out. Includes pyramid layouts with layered rows (and lava bands on harder pyramids).
    */
   const LEVELS = [
     {
       id: 0,
-      name: '1 · Training',
+      tier: 'Easy',
+      name: 'E1 · Boot Camp',
       worldW: 900,
       worldH: 520,
-      towers(base) {
+      towers(b) {
         return [
-          { id: 10, x: 540, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
-          { id: 11, x: 598, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
-          { id: 12, x: 656, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
-          { id: 13, x: 714, y: base - 68, w: 48, h: 68, hp: 2, kind: 'wood', pts: 80, emoji: '' },
-          { id: 14, x: 575, y: base - 136, w: 54, h: 54, hp: 1, kind: 'villain', pts: 420, emoji: '🐷' },
-          { id: 15, x: 640, y: base - 136, w: 54, h: 54, hp: 1, kind: 'villain', pts: 480, emoji: '👹' },
-          { id: 16, x: 705, y: base - 136, w: 54, h: 54, hp: 1, kind: 'villain', pts: 450, emoji: '🦇' },
-          { id: 17, x: 610, y: base - 200, w: 44, h: 44, hp: 2, kind: 'stone', pts: 130, emoji: '' },
-          { id: 18, x: 668, y: base - 200, w: 44, h: 44, hp: 2, kind: 'stone', pts: 130, emoji: '' },
-          { id: 19, x: 639, y: base - 252, w: 50, h: 50, hp: 1, kind: 'villain', pts: 600, emoji: '👿' },
+          lavaBar(10, 382, b - 20, 118, 14),
+          lavaBar(11, 572, b - 20, 118, 14),
+          tower(12, 540, b - 68, 48, 68, 2, 'wood', 80, ''),
+          tower(13, 598, b - 68, 48, 68, 2, 'wood', 80, ''),
+          tower(14, 656, b - 68, 48, 68, 2, 'wood', 80, ''),
+          tower(15, 714, b - 68, 48, 68, 2, 'wood', 80, ''),
+          tower(16, 575, b - 136, 54, 54, 1, 'villain', 420, '🐷'),
+          tower(17, 640, b - 136, 54, 54, 1, 'villain', 480, '👹'),
+          tower(18, 705, b - 136, 54, 54, 1, 'villain', 450, '🦇'),
+          tower(19, 610, b - 200, 44, 44, 2, 'stone', 130, ''),
+          tower(20, 668, b - 200, 44, 44, 2, 'stone', 130, ''),
+          tower(21, 639, b - 252, 50, 50, 1, 'villain', 600, '👿'),
         ];
       },
     },
     {
       id: 1,
-      name: '2 · Outpost',
-      worldW: 1100,
+      tier: 'Easy',
+      name: 'E2 · Lava 101',
+      worldW: 920,
       worldH: 520,
-      towers(base) {
-        const w = 1100;
-        const rx = w - 420;
+      towers(b) {
+        const w = 920;
+        const rx = w - 280;
         return [
-          { id: 20, x: rx, y: base - 52, w: 44, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
-          { id: 21, x: rx + 52, y: base - 52, w: 44, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
-          { id: 22, x: rx + 104, y: base - 52, w: 44, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
-          { id: 23, x: rx + 156, y: base - 52, w: 44, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
-          { id: 24, x: rx + 26, y: base - 110, w: 50, h: 50, hp: 1, kind: 'villain', pts: 400, emoji: '🐗' },
-          { id: 25, x: rx + 92, y: base - 110, w: 50, h: 50, hp: 1, kind: 'villain', pts: 400, emoji: '🐷' },
-          { id: 26, x: rx + 158, y: base - 110, w: 50, h: 50, hp: 1, kind: 'villain', pts: 400, emoji: '🦇' },
-          { id: 27, x: rx + 60, y: base - 168, w: 42, h: 42, hp: 3, kind: 'stone', pts: 150, emoji: '' },
-          { id: 28, x: rx + 118, y: base - 168, w: 42, h: 42, hp: 3, kind: 'stone', pts: 150, emoji: '' },
-          { id: 29, x: rx + 300, y: base - 120, w: 40, h: 100, hp: 2, kind: 'wood', pts: 90, emoji: '' },
-          { id: 30, x: rx + 270, y: base - 220, w: 48, h: 48, hp: 1, kind: 'villain', pts: 520, emoji: '👹' },
+          lavaBar(30, rx - 40, b - 16, w - rx + 80, 14),
+          tower(31, rx, b - 52, 46, 52, 2, 'wood', 78, ''),
+          tower(32, rx + 54, b - 52, 46, 52, 2, 'wood', 78, ''),
+          tower(33, rx + 27, b - 112, 52, 52, 1, 'villain', 400, '🐷'),
+          tower(34, rx + 10, b - 178, 40, 40, 3, 'stone', 125, ''),
+          tower(35, rx + 56, b - 178, 40, 40, 3, 'stone', 125, ''),
         ];
       },
     },
     {
       id: 2,
-      name: '3 · Fort',
-      worldW: 1320,
-      worldH: 540,
-      towers(base) {
-        const w = 1320;
-        const a = w - 520;
-        const b = w - 280;
+      tier: 'Easy',
+      name: 'E3 · Bridge Run',
+      worldW: 980,
+      worldH: 520,
+      towers(b) {
+        const w = 980;
+        const cx = w - 320;
         return [
-          { id: 40, x: a, y: base - 48, w: 40, h: 48, hp: 2, kind: 'wood', pts: 70, emoji: '' },
-          { id: 41, x: a + 48, y: base - 48, w: 40, h: 48, hp: 2, kind: 'wood', pts: 70, emoji: '' },
-          { id: 42, x: a + 96, y: base - 48, w: 40, h: 48, hp: 2, kind: 'wood', pts: 70, emoji: '' },
-          { id: 43, x: a + 24, y: base - 100, w: 46, h: 46, hp: 1, kind: 'villain', pts: 380, emoji: '🐷' },
-          { id: 44, x: a + 82, y: base - 100, w: 46, h: 46, hp: 1, kind: 'villain', pts: 380, emoji: '🦎' },
-          { id: 45, x: a + 48, y: base - 158, w: 40, h: 40, hp: 4, kind: 'stone', pts: 160, emoji: '' },
-          { id: 46, x: b, y: base - 56, w: 44, h: 56, hp: 2, kind: 'wood', pts: 85, emoji: '' },
-          { id: 47, x: b + 52, y: base - 56, w: 44, h: 56, hp: 2, kind: 'wood', pts: 85, emoji: '' },
-          { id: 48, x: b + 26, y: base - 120, w: 52, h: 52, hp: 1, kind: 'villain', pts: 440, emoji: '👿' },
-          { id: 49, x: b + 10, y: base - 188, w: 38, h: 38, hp: 3, kind: 'stone', pts: 140, emoji: '' },
-          { id: 50, x: b + 58, y: base - 188, w: 38, h: 38, hp: 3, kind: 'stone', pts: 140, emoji: '' },
-          { id: 51, x: b + 34, y: base - 240, w: 48, h: 48, hp: 1, kind: 'villain', pts: 650, emoji: '🐉' },
+          lavaBar(40, cx - 30, b - 22, 200, 16),
+          lavaBar(41, cx + 200, b - 22, 200, 16),
+          tower(42, cx - 8, b - 58, 42, 58, 2, 'wood', 76, ''),
+          tower(43, cx + 38, b - 58, 42, 58, 2, 'wood', 76, ''),
+          tower(44, cx + 84, b - 58, 42, 58, 2, 'wood', 76, ''),
+          tower(45, cx + 38, b - 122, 50, 50, 1, 'villain', 430, '🐗'),
         ];
       },
     },
     {
       id: 3,
-      name: '4 · Citadel',
-      worldW: 1560,
-      worldH: 560,
-      towers(base) {
-        const w = 1560;
-        const c1 = w - 620;
-        const c2 = w - 400;
-        const c3 = w - 200;
+      tier: 'Easy',
+      name: 'E4 · Twin Peaks',
+      worldW: 1040,
+      worldH: 520,
+      towers(b) {
+        const w = 1040;
+        const a = w - 480;
+        const c = w - 220;
         return [
-          { id: 60, x: c1, y: base - 44, w: 38, h: 44, hp: 2, kind: 'wood', pts: 65, emoji: '' },
-          { id: 61, x: c1 + 44, y: base - 44, w: 38, h: 44, hp: 2, kind: 'wood', pts: 65, emoji: '' },
-          { id: 62, x: c1 + 88, y: base - 44, w: 38, h: 44, hp: 2, kind: 'wood', pts: 65, emoji: '' },
-          { id: 63, x: c1 + 44, y: base - 96, w: 44, h: 44, hp: 1, kind: 'villain', pts: 360, emoji: '🐷' },
-          { id: 64, x: c1 + 20, y: base - 150, w: 36, h: 36, hp: 4, kind: 'stone', pts: 170, emoji: '' },
-          { id: 65, x: c1 + 68, y: base - 150, w: 36, h: 36, hp: 4, kind: 'stone', pts: 170, emoji: '' },
-          { id: 66, x: c1 + 44, y: base - 200, w: 46, h: 46, hp: 1, kind: 'villain', pts: 700, emoji: '👹' },
-          { id: 67, x: c2, y: base - 50, w: 42, h: 50, hp: 2, kind: 'wood', pts: 80, emoji: '' },
-          { id: 68, x: c2 + 54, y: base - 50, w: 42, h: 50, hp: 2, kind: 'wood', pts: 80, emoji: '' },
-          { id: 69, x: c2 + 27, y: base - 110, w: 48, h: 48, hp: 1, kind: 'villain', pts: 420, emoji: '🦇' },
-          { id: 70, x: c3, y: base - 40, w: 36, h: 120, hp: 2, kind: 'wood', pts: 95, emoji: '' },
-          { id: 71, x: c3 - 8, y: base - 175, w: 52, h: 52, hp: 1, kind: 'villain', pts: 480, emoji: '🐗' },
-          { id: 72, x: c3 + 48, y: base - 175, w: 44, h: 44, hp: 2, kind: 'stone', pts: 135, emoji: '' },
+          lavaBar(50, a - 20, b - 18, 160, 12),
+          lavaBar(51, c - 20, b - 18, 160, 12),
+          tower(52, a, b - 50, 40, 50, 2, 'wood', 74, ''),
+          tower(53, a + 46, b - 50, 40, 50, 2, 'wood', 74, ''),
+          tower(54, a + 23, b - 108, 48, 48, 1, 'villain', 390, '🦇'),
+          tower(55, c, b - 50, 40, 50, 2, 'wood', 74, ''),
+          tower(56, c + 46, b - 50, 40, 50, 2, 'wood', 74, ''),
+          tower(57, c + 23, b - 108, 48, 48, 1, 'villain', 390, '🐷'),
         ];
       },
     },
     {
       id: 4,
-      name: '5 · Stronghold',
+      tier: 'Medium',
+      name: 'M1 · Outpost',
+      worldW: 1120,
+      worldH: 520,
+      towers(b) {
+        const w = 1120;
+        const rx = w - 420;
+        return [
+          lavaBar(60, rx - 24, b - 16, 90, 12),
+          lavaBar(61, rx + 200, b - 16, 90, 12),
+          tower(62, rx, b - 52, 44, 52, 2, 'wood', 75, ''),
+          tower(63, rx + 52, b - 52, 44, 52, 2, 'wood', 75, ''),
+          tower(64, rx + 104, b - 52, 44, 52, 2, 'wood', 75, ''),
+          tower(65, rx + 156, b - 52, 44, 52, 2, 'wood', 75, ''),
+          tower(66, rx + 26, b - 110, 50, 50, 1, 'villain', 400, '🐗'),
+          tower(67, rx + 92, b - 110, 50, 50, 1, 'villain', 400, '🐷'),
+          tower(68, rx + 158, b - 110, 50, 50, 1, 'villain', 400, '🦇'),
+          tower(69, rx + 60, b - 168, 42, 42, 3, 'stone', 150, ''),
+          tower(70, rx + 118, b - 168, 42, 42, 3, 'stone', 150, ''),
+          tower(71, rx + 300, b - 120, 40, 100, 2, 'wood', 90, ''),
+          tower(72, rx + 270, b - 220, 48, 48, 1, 'villain', 520, '👹'),
+        ];
+      },
+    },
+    {
+      id: 5,
+      tier: 'Medium',
+      name: 'M2 · Molten River',
+      worldW: 1180,
+      worldH: 530,
+      towers(b) {
+        const w = 1180;
+        return [
+          lavaBar(80, 320, b - 48, w - 400, 22),
+          tower(81, w - 520, b - 52, 44, 52, 2, 'wood', 73, ''),
+          tower(82, w - 468, b - 52, 44, 52, 2, 'wood', 73, ''),
+          tower(83, w - 416, b - 52, 44, 52, 2, 'wood', 73, ''),
+          tower(84, w - 494, b - 112, 50, 50, 1, 'villain', 410, '🐷'),
+          tower(85, w - 438, b - 112, 50, 50, 1, 'villain', 410, '👹'),
+          tower(86, w - 280, b - 56, 42, 56, 2, 'wood', 82, ''),
+          tower(87, w - 232, b - 56, 42, 56, 2, 'wood', 82, ''),
+          tower(88, w - 256, b - 124, 48, 48, 1, 'villain', 480, '👿'),
+        ];
+      },
+    },
+    {
+      id: 6,
+      tier: 'Medium',
+      name: 'M3 · Pyramid & Moat',
+      worldW: 1240,
+      worldH: 540,
+      towers(b) {
+        const w = 1240;
+        const cx = w - 320;
+        const moatW = 340;
+        return [
+          lavaBar(100, cx - moatW / 2, b - 20, moatW, 16),
+          ...pyramidBlocks(cx, b, 6, 38, 36, 3, 2, 101, false),
+        ];
+      },
+    },
+    {
+      id: 7,
+      tier: 'Medium',
+      name: 'M4 · Split Keep',
+      worldW: 1300,
+      worldH: 540,
+      towers(b) {
+        const w = 1300;
+        const a = w - 560;
+        const b2 = w - 300;
+        return [
+          lavaBar(200, a + 40, b - 18, 120, 12),
+          lavaBar(201, b2 + 20, b - 18, 120, 12),
+          tower(202, a, b - 48, 40, 48, 2, 'wood', 70, ''),
+          tower(203, a + 48, b - 48, 40, 48, 2, 'wood', 70, ''),
+          tower(204, a + 24, b - 102, 46, 46, 1, 'villain', 385, '🦎'),
+          tower(205, b2, b - 52, 44, 52, 2, 'wood', 76, ''),
+          tower(206, b2 + 54, b - 52, 44, 52, 2, 'wood', 76, ''),
+          tower(207, b2 + 27, b - 118, 50, 50, 1, 'villain', 450, '🐉'),
+          lavaBar(208, (a + b2) / 2 - 30, b - 24, 60, 14),
+        ];
+      },
+    },
+    {
+      id: 8,
+      tier: 'Hard',
+      name: 'H1 · Fortress Line',
+      worldW: 1380,
+      worldH: 550,
+      towers(b) {
+        const w = 1380;
+        const a = w - 540;
+        const b2 = w - 280;
+        return [
+          lavaBar(300, a - 10, b - 20, 100, 14),
+          tower(301, a, b - 48, 40, 48, 2, 'wood', 70, ''),
+          tower(302, a + 48, b - 48, 40, 48, 2, 'wood', 70, ''),
+          tower(303, a + 96, b - 48, 40, 48, 2, 'wood', 70, ''),
+          tower(304, a + 24, b - 100, 46, 46, 1, 'villain', 380, '🐷'),
+          tower(305, a + 48, b - 158, 40, 40, 4, 'stone', 160, ''),
+          tower(306, b2, b - 56, 44, 56, 2, 'wood', 85, ''),
+          tower(307, b2 + 52, b - 56, 44, 56, 2, 'wood', 85, ''),
+          tower(308, b2 + 26, b - 120, 52, 52, 1, 'villain', 440, '👿'),
+          tower(309, b2 + 10, b - 188, 38, 38, 3, 'stone', 140, ''),
+          tower(310, b2 + 58, b - 188, 38, 38, 3, 'stone', 140, ''),
+          tower(311, b2 + 34, b - 242, 48, 48, 1, 'villain', 660, '🐉'),
+        ];
+      },
+    },
+    {
+      id: 9,
+      tier: 'Hard',
+      name: 'H2 · Lava Citadel',
+      worldW: 1520,
+      worldH: 560,
+      towers(b) {
+        const w = 1520;
+        const c1 = w - 600;
+        const c2 = w - 380;
+        const c3 = w - 190;
+        return [
+          lavaBar(400, c1 - 10, b - 26, 520, 18),
+          tower(401, c1, b - 44, 38, 44, 2, 'wood', 65, ''),
+          tower(402, c1 + 44, b - 44, 38, 44, 2, 'wood', 65, ''),
+          tower(403, c1 + 88, b - 44, 38, 44, 2, 'wood', 65, ''),
+          tower(404, c1 + 44, b - 96, 44, 44, 1, 'villain', 360, '🐷'),
+          tower(405, c1 + 20, b - 150, 36, 36, 4, 'stone', 170, ''),
+          tower(406, c1 + 68, b - 150, 36, 36, 4, 'stone', 170, ''),
+          tower(407, c1 + 44, b - 200, 46, 46, 1, 'villain', 700, '👹'),
+          tower(408, c2, b - 50, 42, 50, 2, 'wood', 80, ''),
+          tower(409, c2 + 54, b - 50, 42, 50, 2, 'wood', 80, ''),
+          tower(410, c2 + 27, b - 110, 48, 48, 1, 'villain', 420, '🦇'),
+          tower(411, c3, b - 40, 36, 120, 2, 'wood', 95, ''),
+          tower(412, c3 - 8, b - 175, 52, 52, 1, 'villain', 480, '🐗'),
+          tower(413, c3 + 48, b - 175, 44, 44, 2, 'stone', 135, ''),
+        ];
+      },
+    },
+    {
+      id: 10,
+      tier: 'Hard',
+      name: 'H3 · Grand Pyramid',
+      worldW: 1580,
+      worldH: 570,
+      towers(b) {
+        const w = 1580;
+        const cx = w - 340;
+        return [
+          lavaBar(500, cx - 200, b - 22, 400, 16),
+          ...pyramidBlocks(cx, b, 7, 36, 34, 3, 2, 501, true),
+        ];
+      },
+    },
+    {
+      id: 11,
+      tier: 'Hard',
+      name: 'H4 · Gauntlet',
+      worldW: 1680,
+      worldH: 580,
+      towers(b) {
+        const w = 1680;
+        const z = w - 680;
+        return [
+          lavaBar(600, z - 20, b - 18, 140, 12),
+          lavaBar(601, z + 200, b - 18, 140, 12),
+          tower(602, z, b - 40, 36, 40, 2, 'wood', 62, ''),
+          tower(603, z + 40, b - 40, 36, 40, 2, 'wood', 62, ''),
+          tower(604, z + 80, b - 40, 36, 40, 2, 'wood', 62, ''),
+          tower(605, z + 120, b - 40, 36, 40, 2, 'wood', 62, ''),
+          tower(606, z + 20, b - 88, 40, 40, 1, 'villain', 320, '🐷'),
+          tower(607, z + 64, b - 88, 40, 40, 1, 'villain', 320, '🐷'),
+          tower(608, z + 108, b - 88, 40, 40, 1, 'villain', 320, '🐷'),
+          tower(609, z + 44, b - 136, 34, 34, 5, 'stone', 180, ''),
+          tower(610, z + 86, b - 136, 34, 34, 5, 'stone', 180, ''),
+          tower(611, z + 55, b - 188, 44, 44, 1, 'villain', 820, '👿'),
+        ];
+      },
+    },
+    {
+      id: 12,
+      tier: 'Impossible',
+      name: 'I1 · Hell Hold',
       worldW: 1780,
       worldH: 600,
-      towers(base) {
+      towers(b) {
         const w = 1780;
         const z = w - 720;
         const y2 = w - 460;
         const y3 = w - 240;
         return [
-          { id: 80, x: z, y: base - 40, w: 36, h: 40, hp: 2, kind: 'wood', pts: 60, emoji: '' },
-          { id: 81, x: z + 40, y: base - 40, w: 36, h: 40, hp: 2, kind: 'wood', pts: 60, emoji: '' },
-          { id: 82, x: z + 80, y: base - 40, w: 36, h: 40, hp: 2, kind: 'wood', pts: 60, emoji: '' },
-          { id: 83, x: z + 120, y: base - 40, w: 36, h: 40, hp: 2, kind: 'wood', pts: 60, emoji: '' },
-          { id: 84, x: z + 20, y: base - 88, w: 40, h: 40, hp: 1, kind: 'villain', pts: 320, emoji: '🐷' },
-          { id: 85, x: z + 64, y: base - 88, w: 40, h: 40, hp: 1, kind: 'villain', pts: 320, emoji: '🐷' },
-          { id: 86, x: z + 108, y: base - 88, w: 40, h: 40, hp: 1, kind: 'villain', pts: 320, emoji: '🐷' },
-          { id: 87, x: z + 44, y: base - 136, w: 34, h: 34, hp: 5, kind: 'stone', pts: 180, emoji: '' },
-          { id: 88, x: z + 86, y: base - 136, w: 34, h: 34, hp: 5, kind: 'stone', pts: 180, emoji: '' },
-          { id: 89, x: z + 55, y: base - 188, w: 44, h: 44, hp: 1, kind: 'villain', pts: 800, emoji: '👿' },
-          { id: 90, x: y2, y: base - 48, w: 40, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
-          { id: 91, x: y2 + 50, y: base - 48, w: 40, h: 52, hp: 2, kind: 'wood', pts: 75, emoji: '' },
-          { id: 92, x: y2 + 24, y: base - 108, w: 48, h: 48, hp: 1, kind: 'villain', pts: 500, emoji: '🐉' },
-          { id: 93, x: y2 + 8, y: base - 168, w: 38, h: 38, hp: 3, kind: 'stone', pts: 145, emoji: '' },
-          { id: 94, x: y3, y: base - 44, w: 38, h: 44, hp: 2, kind: 'wood', pts: 70, emoji: '' },
-          { id: 95, x: y3 + 44, y: base - 44, w: 38, h: 44, hp: 2, kind: 'wood', pts: 70, emoji: '' },
-          { id: 96, x: y3 + 22, y: base - 100, w: 46, h: 46, hp: 1, kind: 'villain', pts: 450, emoji: '🦇' },
-          { id: 97, x: y3 + 6, y: base - 158, w: 50, h: 50, hp: 1, kind: 'villain', pts: 580, emoji: '👹' },
+          lavaBar(700, z - 30, b - 24, 520, 20),
+          tower(701, z, b - 40, 36, 40, 2, 'wood', 60, ''),
+          tower(702, z + 40, b - 40, 36, 40, 2, 'wood', 60, ''),
+          tower(703, z + 80, b - 40, 36, 40, 2, 'wood', 60, ''),
+          tower(704, z + 120, b - 40, 36, 40, 2, 'wood', 60, ''),
+          tower(705, z + 20, b - 88, 40, 40, 1, 'villain', 320, '🐷'),
+          tower(706, z + 64, b - 88, 40, 40, 1, 'villain', 320, '🐷'),
+          tower(707, z + 108, b - 88, 40, 40, 1, 'villain', 320, '🐷'),
+          tower(708, z + 44, b - 136, 34, 34, 5, 'stone', 180, ''),
+          tower(709, z + 86, b - 136, 34, 34, 5, 'stone', 180, ''),
+          tower(710, z + 55, b - 188, 44, 44, 1, 'villain', 800, '👿'),
+          tower(711, y2, b - 48, 40, 52, 2, 'wood', 75, ''),
+          tower(712, y2 + 50, b - 48, 40, 52, 2, 'wood', 75, ''),
+          tower(713, y2 + 24, b - 108, 48, 48, 1, 'villain', 500, '🐉'),
+          tower(714, y3, b - 44, 38, 44, 2, 'wood', 70, ''),
+          tower(715, y3 + 44, b - 44, 38, 44, 2, 'wood', 70, ''),
+          tower(716, y3 + 22, b - 100, 46, 46, 1, 'villain', 450, '🦇'),
+          tower(717, y3 + 6, b - 158, 50, 50, 1, 'villain', 580, '👹'),
+        ];
+      },
+    },
+    {
+      id: 13,
+      tier: 'Impossible',
+      name: 'I2 · Caldera Peak',
+      worldW: 1880,
+      worldH: 610,
+      towers(b) {
+        const w = 1880;
+        const cx = w - 380;
+        return [
+          lavaBar(800, cx - 260, b - 28, 520, 22),
+          lavaBar(801, cx - 100, b - 200, 200, 14),
+          ...pyramidBlocks(cx, b, 8, 34, 32, 2, 2, 802, true),
+        ];
+      },
+    },
+    {
+      id: 14,
+      tier: 'Impossible',
+      name: 'I3 · Apocalypse',
+      worldW: 1980,
+      worldH: 620,
+      towers(b) {
+        const w = 1980;
+        const z = w - 760;
+        const y2 = w - 500;
+        return [
+          lavaBar(900, 280, b - 36, w - 560, 24),
+          lavaBar(901, z + 40, b - 120, 300, 16),
+          tower(902, z, b - 40, 34, 40, 2, 'wood', 58, ''),
+          tower(903, z + 38, b - 40, 34, 40, 2, 'wood', 58, ''),
+          tower(904, z + 76, b - 40, 34, 40, 2, 'wood', 58, ''),
+          tower(905, z + 114, b - 40, 34, 40, 2, 'wood', 58, ''),
+          tower(906, z + 152, b - 40, 34, 40, 2, 'wood', 58, ''),
+          tower(907, z + 16, b - 86, 38, 38, 1, 'villain', 300, '🐷'),
+          tower(908, z + 58, b - 86, 38, 38, 1, 'villain', 300, '🐷'),
+          tower(909, z + 100, b - 86, 38, 38, 1, 'villain', 300, '🐷'),
+          tower(910, z + 142, b - 86, 38, 38, 1, 'villain', 300, '🐷'),
+          tower(911, z + 50, b - 132, 32, 32, 5, 'stone', 175, ''),
+          tower(912, z + 88, b - 132, 32, 32, 5, 'stone', 175, ''),
+          tower(913, z + 69, b - 182, 42, 42, 1, 'villain', 900, '👿'),
+          tower(914, y2, b - 46, 38, 50, 2, 'wood', 72, ''),
+          tower(915, y2 + 48, b - 46, 38, 50, 2, 'wood', 72, ''),
+          tower(916, y2 + 24, b - 104, 46, 46, 1, 'villain', 520, '🐉'),
         ];
       },
     },
@@ -287,7 +548,8 @@
       return;
     }
     const L = LEVELS[currentLevelIndex] || LEVELS[0];
-    el.innerHTML = `GAME: <span class="highlight">${GAME_ID}</span> · YOU: <span class="highlight">${PLAYER_ID}</span> · ${IS_MAN ? 'HOST' : 'JOIN'} · <span class="highlight">${L.name}</span> <span style="opacity:0.75">(${WORLD_W}×${WORLD_H})</span>`;
+    const tier = L.tier ? `<span style="opacity:0.85">${L.tier}</span> · ` : '';
+    el.innerHTML = `GAME: <span class="highlight">${GAME_ID}</span> · YOU: <span class="highlight">${PLAYER_ID}</span> · ${IS_MAN ? 'HOST' : 'JOIN'} · ${tier}<span class="highlight">${L.name}</span> <span style="opacity:0.75">(${WORLD_W}×${WORLD_H})</span>`;
   }
 
   let currentLevelIndex = 0;
@@ -461,7 +723,7 @@
       b.type = 'button';
       b.setAttribute('data-level', String(i));
       b.textContent = L.name;
-      b.title = `${L.name} — world ${L.worldW}×${L.worldH}`;
+      b.title = `${L.tier ? L.tier + ' · ' : ''}${L.name} — ${L.worldW}×${L.worldH}`;
       b.addEventListener('click', () => {
         if (localLocked) {
           return;
@@ -673,7 +935,11 @@
       data.towers.forEach((row) => {
         const t = towers.find((x) => x.id === row.id);
         if (t) {
-          t.hp = row.hp;
+          if (t.kind === 'lava') {
+            t.hp = 9999;
+          } else {
+            t.hp = row.hp;
+          }
         }
       });
     }
@@ -702,6 +968,25 @@
       spin: SPIN_BASE * (p.spinMul || 1),
       power: p,
     };
+    setTurnLine();
+  }
+
+  function completeShotAndAdvanceTurn() {
+    if (phase !== 'flight') {
+      return;
+    }
+    const shooter = shooterThisRound;
+    if (SOLO || playAlone) {
+      turn = PLAYER_ID;
+    } else {
+      turn = shooter === 'Man' ? 'Boy' : 'Man';
+    }
+    if (PLAYER_ID === shooter && !SOLO && !playAlone) {
+      publishFinish();
+    }
+    projectile = null;
+    phase = 'aim';
+    shooterThisRound = null;
     setTurnLine();
   }
 
@@ -736,7 +1021,7 @@
       return;
     }
     for (const b of towers) {
-      if (b.hp <= 0 || b.id === broken.id) {
+      if (b.hp <= 0 || b.id === broken.id || b.kind === 'lava') {
         continue;
       }
       const dist = Math.hypot(b.x + b.w / 2 - (broken.x + broken.w / 2), b.y + b.h / 2 - (broken.y + broken.h / 2));
@@ -776,6 +1061,13 @@
       }
       if (!circleRectHit(p.x, p.y, effectivePR(), b)) {
         continue;
+      }
+      if (b.kind === 'lava') {
+        spawnDebris(p.x, p.y, '🔥');
+        spawnDebris(p.x, p.y, '💀');
+        beep(90, 0.22);
+        completeShotAndAdvanceTurn();
+        return;
       }
       const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
       const ny = Math.max(b.y, Math.min(p.y, b.y + b.h));
@@ -850,24 +1142,16 @@
 
     resolveHits(p);
 
+    if (!projectile) {
+      return;
+    }
+
     const spd = Math.hypot(p.vx, p.vy);
     const grounded = p.y + er >= GROUND_Y - 0.5;
     const oob = p.x > WORLD_W + 140 || p.x < -140;
     const settled = grounded && spd < 2.05;
     if (oob || settled) {
-      const shooter = shooterThisRound;
-      if (SOLO || playAlone) {
-        turn = PLAYER_ID;
-      } else {
-        turn = shooter === 'Man' ? 'Boy' : 'Man';
-      }
-      if (PLAYER_ID === shooter && !SOLO && !playAlone) {
-        publishFinish();
-      }
-      projectile = null;
-      phase = 'aim';
-      shooterThisRound = null;
-      setTurnLine();
+      completeShotAndAdvanceTurn();
     }
   }
 
@@ -896,6 +1180,17 @@
       if (b.kind === 'villain') {
         ctx.fillStyle = 'rgba(60, 40, 50, 0.35)';
         ctx.fillRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
+      } else if (b.kind === 'lava') {
+        const lg = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h);
+        lg.addColorStop(0, '#ff9a3c');
+        lg.addColorStop(0.45, '#ff3c1a');
+        lg.addColorStop(1, '#6a0a0a');
+        ctx.fillStyle = lg;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.strokeStyle = 'rgba(255, 220, 120, 0.75)';
+        ctx.lineWidth = Math.max(2, (2.5 * WORLD_W) / 900);
+        ctx.strokeRect(b.x, b.y, b.w, b.h);
+        continue;
       } else if (b.kind === 'stone') {
         ctx.fillStyle = '#7a8a9a';
       } else {
