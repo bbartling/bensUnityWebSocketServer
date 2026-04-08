@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Emoji Lobber — Seats</title>
+    <title>Emoji Lobber</title>
     <link rel="stylesheet" href="/lobber/lobber.css" />
     <style>
       :root {
@@ -43,24 +43,18 @@
         opacity: 0.88;
         line-height: 1.5;
       }
-      .card a {
+      .card a.play {
         display: inline-block;
-        margin: 6px;
-        padding: 12px 22px;
+        margin-top: 8px;
+        padding: 14px 28px;
         border-radius: 8px;
         text-decoration: none;
         font-weight: 600;
         font-family: 'Orbitron', sans-serif;
-        font-size: 0.58rem;
+        font-size: 0.62rem;
         letter-spacing: 0.1em;
         color: #061018;
-      }
-      .a {
         background: #6b8cff;
-        box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
-      }
-      .b {
-        background: #ff6b8b;
         box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
       }
       .back {
@@ -83,12 +77,11 @@
     <div class="card">
       <h1>EMOJI LOBBER</h1>
       <p>
-        Angry-Birds-style drag for angle and power (emoji spins in flight).         Human-face heroes = your ammo; villain &amp; creature faces = “pigs.”
-        <strong>15 levels</strong> (Easy → Impossible; wider = more zoomed out). <strong>Lava</strong> kills your shot on touch. Pick any stage before locking. Man hosts and syncs state; Boy catches up if he joins late. If nobody else connects ~14s after you lock, <strong>1-player</strong> starts. <span style="opacity:0.8">Console: add <code>?debug=1</code> for verbose MQTT logs.</span>
-        Broker: <code>wss://test.mosquitto.org:8081</code>
+        Angry-Birds-style drag for angle and power (emoji spins in flight). Human-face heroes = your shot; stacked wood,
+        stone, and creature targets. <strong>15 levels</strong> (easy → huge worlds). <strong>Lava</strong> ends the shot
+        on touch. No network — runs entirely in the browser.
       </p>
-      <p><a class="a" href="/lobber/man.html">MAN</a> <a class="b" href="/lobber/boy.html">BOY</a></p>
-      <p style="font-size: 0.65rem; opacity: 0.75">One tab per seat (unique client IDs). Short-circuit network with <code>?solo=1</code> if you want.</p>
+      <p><a class="play" href="/lobber/man.html">PLAY</a></p>
       <p class="back"><a href="/">← Arcade dashboard</a></p>
     </div>
   </body>

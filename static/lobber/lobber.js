@@ -1,38 +1,26 @@
 /**
- * Emoji Lobber — Angry-Birds-style lob, MQTT Man/Boy, master sync, solo & auto-1P fallback.
- * HERO picker = human faces only (each has a power). Targets = villain/creature emojis.
+ * Emoji Lobber — single-player slingshot puzzle (no networking).
+ * Hero picker = human faces only (each has a power). Targets = villain/creature emojis.
  */
 (function () {
   'use strict';
 
   const cfg = window.LOBBER_CONFIG;
-  if (!cfg) {
-    console.error('LOBBER_CONFIG missing');
+  if (!cfg || cfg.seat !== 'Man') {
+    console.error('LOBBER_CONFIG missing or invalid (single-player expects seat: Man)');
     return;
   }
 
-  const BROKER_URL = 'wss://test.mosquitto.org:8081';
-  const GAME_ID = 'bens_arcade';
-  const PLAYER_ID = cfg.seat;
-  const REMOTE_ID = PLAYER_ID === 'Man' ? 'Boy' : 'Man';
-  const IS_MAN = PLAYER_ID === 'Man';
-  const SOLO = new URLSearchParams(window.location.search).get('solo') === '1';
+  const PLAYER_ID = 'Man';
   const LOBBER_DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
-  /** Verbose 2P / MQTT trace — add ?debug=1 to the URL. */
+  /** Verbose trace — add ?debug=1 to the URL. */
   function dlog() {
     if (LOBBER_DEBUG) {
       const args = Array.prototype.slice.call(arguments);
-      args.unshift(`[Lobber:${PLAYER_ID}]`);
+      args.unshift('[Lobber]');
       console.log.apply(console, args);
     }
-  }
-  /** Always-on breadcrumbs for connection issues (lightweight). */
-  function ilog() {
-    const args = Array.prototype.slice.call(arguments);
-    const ts = new Date().toISOString().slice(11, 23);
-    args.unshift(ts, `[Lobber:${PLAYER_ID}]`);
-    console.log.apply(console, args);
   }
 
   const CANVAS_W = 900;
@@ -529,53 +517,6 @@
     return L.towers(base);
   }
 
-  /**
-   * Rebuild block list from the level template and apply only HP from the network.
-   * Fixes missing `kind` (e.g. lava drawn as wood) if sync JSON was trimmed or merged poorly.
-   */
-  function mergeTowersFromTemplate(levelIndex, rows) {
-    const template = cloneTowers(towersForLevel(levelIndex));
-    if (!rows || !rows.length) {
-      return template;
-    }
-    const hpById = {};
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
-      if (r && typeof r.id === 'number' && typeof r.hp === 'number') {
-        hpById[r.id] = r.hp;
-      }
-    }
-    return template.map((b) => {
-      const h = hpById[b.id];
-      if (h === undefined) {
-        return b;
-      }
-      const out = Object.assign({}, b);
-      out.hp = b.kind === 'lava' ? 9999 : h;
-      return out;
-    });
-  }
-
-  function repairTowerKindsFromTemplate() {
-    const template = towersForLevel(currentLevelIndex);
-    const byId = {};
-    for (let i = 0; i < template.length; i++) {
-      byId[template[i].id] = template[i];
-    }
-    for (let j = 0; j < towers.length; j++) {
-      const t = towers[j];
-      const ref = byId[t.id];
-      if (ref) {
-        if (t.kind !== ref.kind) {
-          t.kind = ref.kind;
-        }
-        if (t.kind === 'lava') {
-          t.hp = 9999;
-        }
-      }
-    }
-  }
-
   function loadLevel(levelIndex) {
     const idx = Math.max(0, Math.min(LEVELS.length - 1, levelIndex | 0));
     const L = LEVELS[idx];
@@ -596,29 +537,21 @@
     }
     const L = LEVELS[currentLevelIndex] || LEVELS[0];
     const tier = L.tier ? `<span style="opacity:0.85">${L.tier}</span> · ` : '';
-    el.innerHTML = `GAME: <span class="highlight">${GAME_ID}</span> · YOU: <span class="highlight">${PLAYER_ID}</span> · ${IS_MAN ? 'HOST' : 'JOIN'} · ${tier}<span class="highlight">${L.name}</span> <span style="opacity:0.75">(${WORLD_W}×${WORLD_H})</span>`;
+    el.innerHTML = `${tier}<span class="highlight">${L.name}</span> <span style="opacity:0.75">(${WORLD_W}×${WORLD_H})</span>`;
   }
 
   let currentLevelIndex = 0;
-  /** In 2P, set from Man’s pick payload so Boy matches host stage. */
-  let hostLevelId = null;
 
   let towers = [];
   loadLevel(0);
   let debris = [];
-  let scoreMan = 0;
-  let scoreBoy = 0;
+  let score = 0;
   let turn = 'Man';
   let phase = 'pick';
   let shotSeq = 0;
-  let syncVer = 0;
 
   let localEmoji = null;
-  let remoteEmoji = null;
   let localLocked = false;
-  let remoteLocked = false;
-  let playAlone = SOLO;
-  let joinSent = false;
 
   let projectile = null;
   let shooterThisRound = null;
@@ -686,19 +619,11 @@
   }
 
   function setScoreText() {
-    if (playAlone || SOLO) {
-      const mine = IS_MAN ? scoreMan : scoreBoy;
-      scoreEl.textContent = `${PLAYER_ID} ${mine} pts`;
-    } else {
-      scoreEl.textContent = `MAN ${scoreMan}  ·  BOY ${scoreBoy}`;
-    }
+    scoreEl.textContent = `${score} pts`;
   }
 
   function activeTurn() {
-    if (SOLO || playAlone) {
-      return PLAYER_ID;
-    }
-    return turn;
+    return PLAYER_ID;
   }
 
   function setTurnLine() {
@@ -707,113 +632,48 @@
       return;
     }
     if (phase === 'flight') {
-      turnLine.textContent = `${shooterThisRound} in flight…`;
+      turnLine.textContent = 'Shot in flight…';
       return;
     }
-    const t = activeTurn();
-    if (playAlone || SOLO) {
-      turnLine.textContent = 'Pull back & release — your emoji spins in the air';
-    } else {
-      turnLine.textContent =
-        t === PLAYER_ID ? 'YOUR TURN — drag from slingshot pocket & release' : `Waiting for ${REMOTE_ID}…`;
-    }
+    turnLine.textContent = 'Pull back & release — drag from the slingshot pocket';
   }
 
   function updatePickStatus() {
     if (!pickStatus) {
       return;
     }
-    if ((SOLO || playAlone) && remoteLocked && !localLocked) {
-      pickStatus.textContent = SOLO ? 'Solo — pick a hero face & Lock in.' : 'No partner yet — pick a hero & Lock in (1-player).';
-    } else if (localLocked && remoteLocked) {
-      pickStatus.textContent = playAlone || SOLO ? 'Ready — go!' : 'Both ready — first volley: Man.';
-    } else if (localLocked) {
-      if (playAlone) {
-        pickStatus.textContent = 'Starting…';
-      } else {
-        const sec = Math.max(0, Math.ceil((JOIN_WAIT_MS - (Date.now() - waitPartnerSince)) / 1000));
-        pickStatus.textContent = `Waiting for ${REMOTE_ID}… (${sec}s → 1-player)`;
-      }
-    } else if (remoteLocked) {
-      pickStatus.textContent = `${REMOTE_ID} ready — pick your hero!`;
+    if (localLocked) {
+      pickStatus.textContent = 'Starting…';
     } else {
       pickStatus.textContent = 'Choose a human-face hero (each has a power), then Lock in.';
     }
   }
 
-  let waitPartnerSince = Date.now();
-  const JOIN_WAIT_MS = 14000;
-
   let selectedLevelIndex = 0;
   const levelButtonsEl = document.getElementById('levelButtons');
 
-  function isNetworkedTwoPlayer() {
-    return !SOLO && !playAlone && client && client.connected;
-  }
-
-  /** In real 2P (MQTT, not solo / not 1P fallback), only Man picks the stage; Boy mirrors. */
-  function boyMustMirrorHostLevel() {
-    return !IS_MAN && isNetworkedTwoPlayer();
-  }
-
   function refreshLevelAuthorityUI() {
     if (levelSelectLabelEl) {
-      if (SOLO || playAlone) {
-        levelSelectLabelEl.innerHTML =
-          '<strong>Level</strong> — solo / no network: pick any of ' +
-          LEVELS.length +
-          ' stages. Wider = more zoomed out.';
-      } else if (IS_MAN) {
-        levelSelectLabelEl.innerHTML =
-          '<strong>You (host) choose the level</strong> for both players. Boy’s screen mirrors this list in real time.';
-      } else if (boyMustMirrorHostLevel()) {
-        levelSelectLabelEl.innerHTML =
-          '<strong>Man chooses the level</strong> — your buttons mirror his (read-only). ' +
-          (hostLevelId == null
-            ? 'Waiting for Man to change or lock a level…'
-            : 'Mirroring: <em>' +
-              (LEVELS[hostLevelId] && LEVELS[hostLevelId].name) +
-              '</em>.');
-      } else {
-        levelSelectLabelEl.innerHTML =
-          '<strong>Level</strong> — ' + LEVELS.length + ' stages. Connect to Man for 2P mirroring.';
-      }
+      levelSelectLabelEl.innerHTML =
+        '<strong>Level</strong> — pick one of ' + LEVELS.length + ' stages (wider = more zoomed out).';
     }
     if (!levelButtonsEl) {
       return;
     }
-    const dis = boyMustMirrorHostLevel() && !localLocked;
     levelButtonsEl.querySelectorAll('button[data-level]').forEach((btn) => {
-      btn.disabled = !!dis;
-      btn.setAttribute('aria-disabled', dis ? 'true' : 'false');
+      btn.disabled = false;
+      btn.setAttribute('aria-disabled', 'false');
     });
-    levelButtonsEl.classList.toggle('level-buttons-mirrored', !!dis);
-  }
-
-  function publishLevelPreview(levelIdx) {
-    if (!IS_MAN || SOLO || playAlone || !client || !client.connected) {
-      return;
-    }
-    const idx = Math.max(0, Math.min(LEVELS.length - 1, levelIdx | 0));
-    client.publish(`lobber/${GAME_ID}/Man/level`, JSON.stringify({ levelId: idx, t: Date.now() }), { qos: 0 });
-    dlog('tx Man/level', { levelId: idx });
-  }
-
-  function levelForNewMatch() {
-    if (SOLO || playAlone || IS_MAN) {
-      return selectedLevelIndex;
-    }
-    return hostLevelId != null ? hostLevelId : selectedLevelIndex;
+    levelButtonsEl.classList.remove('level-buttons-mirrored');
   }
 
   function syncLevelButtonHighlight() {
     if (!levelButtonsEl) {
       return;
     }
-    const show = IS_MAN ? selectedLevelIndex : hostLevelId != null ? hostLevelId : selectedLevelIndex;
     levelButtonsEl.querySelectorAll('button[data-level]').forEach((btn) => {
       const n = parseInt(btn.getAttribute('data-level'), 10);
-      btn.classList.toggle('selected', n === show);
+      btn.classList.toggle('selected', n === selectedLevelIndex);
     });
   }
 
@@ -828,15 +688,9 @@
         if (localLocked) {
           return;
         }
-        if (boyMustMirrorHostLevel()) {
-          return;
-        }
         selectedLevelIndex = i;
         loadLevel(i);
         syncLevelButtonHighlight();
-        if (IS_MAN) {
-          publishLevelPreview(i);
-        }
         dlog('level selected', { i, name: L.name });
       });
       levelButtonsEl.appendChild(b);
@@ -878,192 +732,38 @@
     }
     localLocked = true;
     lockBtn.disabled = true;
-    waitPartnerSince = Date.now();
-    publishPick(localEmoji);
     updatePickStatus();
     tryBeginMatch();
   });
 
   function tryBeginMatch() {
-    if (localLocked && remoteLocked && phase === 'pick') {
+    if (localLocked && phase === 'pick') {
       phase = 'aim';
       pickOverlay.classList.add('hidden');
       canvas.classList.remove('lobber-wait');
-      loadLevel(levelForNewMatch());
+      loadLevel(selectedLevelIndex);
       debris = [];
       syncLevelButtonHighlight();
-      turn = SOLO || playAlone ? PLAYER_ID : 'Man';
+      turn = PLAYER_ID;
       setTurnLine();
       setScoreText();
-      ilog('match start', { level: currentLevelIndex, name: LEVELS[currentLevelIndex].name, world: `${WORLD_W}×${WORLD_H}`, twoPlayer: !(SOLO || playAlone) });
-      if (IS_MAN && !SOLO && !playAlone) {
-        publishSync();
-      }
+      dlog('match start', {
+        level: currentLevelIndex,
+        name: LEVELS[currentLevelIndex].name,
+        world: `${WORLD_W}×${WORLD_H}`,
+      });
     }
   }
 
-  function enterPlayAlone() {
-    if (playAlone || SOLO) {
-      return;
-    }
-    ilog('enter 1-player fallback', { reason: 'partner_wait_timeout', joinWaitMs: JOIN_WAIT_MS, level: selectedLevelIndex });
-    playAlone = true;
-    remoteEmoji = '🌐';
-    remoteLocked = true;
-    partnerOk = true;
-    partnerTrying = false;
-    updatePickStatus();
-    updateConn();
-    refreshLevelAuthorityUI();
-    tryBeginMatch();
-  }
-
-  let client = null;
-
-  function publishPick(emoji) {
-    if (SOLO || !client || !client.connected) {
-      return;
-    }
-    const payload = { emoji, levelId: selectedLevelIndex };
-    client.publish(`lobber/${GAME_ID}/${PLAYER_ID}/pick`, JSON.stringify(payload), { qos: 0 });
-    dlog('tx pick', payload);
-  }
-
-  function publishStatus(s) {
-    if (SOLO || playAlone || !client || !client.connected) {
-      return;
-    }
-    client.publish(`lobber/${GAME_ID}/${PLAYER_ID}/status`, s, { qos: 0 });
-    dlog('tx status', s);
-  }
-
-  function publishJoin() {
-    if (!client || !client.connected || IS_MAN) {
-      return;
-    }
-    const topic = `lobber/${GAME_ID}/Boy/join`;
-    client.publish(topic, JSON.stringify({ t: Date.now() }), { qos: 0 });
-    ilog('tx Boy/join', { topic, seat: PLAYER_ID });
-  }
-
-  function publishSync() {
-    if (!IS_MAN || SOLO || playAlone || !client || !client.connected) {
-      return;
-    }
-    const payload = {
-      v: syncVer++,
-      levelId: currentLevelIndex,
-      worldW: WORLD_W,
-      worldH: WORLD_H,
-      towers: cloneTowers(towers),
-      debris: [],
-      scoreMan,
-      scoreBoy,
-      turn,
-      phase,
-      shotSeq,
-    };
-    client.publish(`lobber/${GAME_ID}/Man/sync`, JSON.stringify(payload), { qos: 0 });
-    dlog('tx sync', { v: payload.v, levelId: payload.levelId, blocks: payload.towers.length, turn, phase, shotSeq });
-  }
-
-  function applySync(data) {
-    if (!data || !data.towers) {
-      return;
-    }
-    if (typeof data.levelId === 'number' && data.levelId >= 0 && data.levelId < LEVELS.length) {
-      hostLevelId = data.levelId;
-      selectedLevelIndex = data.levelId;
-      loadLevel(data.levelId);
-    }
-    towers = mergeTowersFromTemplate(currentLevelIndex, data.towers);
-    scoreMan = data.scoreMan | 0;
-    scoreBoy = data.scoreBoy | 0;
-    turn = data.turn === 'Boy' ? 'Boy' : 'Man';
-    shotSeq = data.shotSeq | 0;
-    debris = [];
-    if (data.phase === 'aim' || data.phase === 'flight') {
-      phase = 'aim';
-      projectile = null;
-      shooterThisRound = null;
-      pickOverlay.classList.add('hidden');
-      canvas.classList.remove('lobber-wait');
-    }
-    setScoreText();
-    setTurnLine();
-    bumpPartnerSeen();
-    ilog('applySync', {
-      levelId: data.levelId,
-      blocks: data.towers.length,
-      turn: data.turn,
-      phase: data.phase,
-      shotSeq: data.shotSeq,
-      scores: { scoreMan: data.scoreMan, scoreBoy: data.scoreBoy },
-    });
-    syncLevelButtonHighlight();
-    refreshLevelAuthorityUI();
-  }
-
-  function publishShot(vx, vy, emoji) {
+  function fireShot(vx, vy, emoji) {
     shotSeq += 1;
-    if (!SOLO && !playAlone && client && client.connected) {
-      const payload = JSON.stringify({
-        vx,
-        vy,
-        emoji,
-        by: PLAYER_ID,
-        seq: shotSeq,
-      });
-      client.publish(`lobber/${GAME_ID}/${PLAYER_ID}/shot`, payload, { qos: 0 });
-      dlog('tx shot', { seq: shotSeq, emoji, vx: Math.round(vx * 100) / 100, vy: Math.round(vy * 100) / 100 });
-    }
-    startFlight(vx, vy, emoji, PLAYER_ID);
-  }
-
-  function publishFinish() {
-    const payload = JSON.stringify({
-      towers: towers.map((t) => ({ id: t.id, hp: t.hp })),
-      scoreMan,
-      scoreBoy,
-      nextTurn: turn,
-      by: PLAYER_ID,
+    dlog('shot', {
       seq: shotSeq,
+      emoji,
+      vx: Math.round(vx * 100) / 100,
+      vy: Math.round(vy * 100) / 100,
     });
-    if (!SOLO && !playAlone && client && client.connected) {
-      client.publish(`lobber/${GAME_ID}/${PLAYER_ID}/finish`, payload, { qos: 0 });
-      dlog('tx finish', { seq: shotSeq, nextTurn: turn });
-    }
-    if (IS_MAN && !SOLO && !playAlone && client && client.connected) {
-      publishSync();
-    }
-  }
-
-  function applyFinish(data) {
-    scoreMan = data.scoreMan;
-    scoreBoy = data.scoreBoy;
-    turn = data.nextTurn;
-    if (data.towers && data.towers.length) {
-      data.towers.forEach((row) => {
-        const t = towers.find((x) => x.id === row.id);
-        if (t) {
-          if (t.kind === 'lava') {
-            t.hp = 9999;
-          } else {
-            t.hp = row.hp;
-          }
-        }
-      });
-    }
-    repairTowerKindsFromTemplate();
-    projectile = null;
-    phase = 'aim';
-    shooterThisRound = null;
-    setScoreText();
-    setTurnLine();
-    bumpPartnerSeen();
-    if (IS_MAN && !SOLO && !playAlone) {
-      publishSync();
-    }
+    startFlight(vx, vy, emoji, PLAYER_ID);
   }
 
   function startFlight(vx, vy, emoji, shooter) {
@@ -1087,15 +787,7 @@
     if (phase !== 'flight') {
       return;
     }
-    const shooter = shooterThisRound;
-    if (SOLO || playAlone) {
-      turn = PLAYER_ID;
-    } else {
-      turn = shooter === 'Man' ? 'Boy' : 'Man';
-    }
-    if (PLAYER_ID === shooter && !SOLO && !playAlone) {
-      publishFinish();
-    }
+    turn = PLAYER_ID;
     projectile = null;
     phase = 'aim';
     shooterThisRound = null;
@@ -1157,11 +849,7 @@
     if (b.kind === 'villain' && pr && pr.villainPtsMul) {
       pts = Math.floor(pts * pr.villainPtsMul);
     }
-    if (shooterThisRound === 'Man') {
-      scoreMan += pts + 25;
-    } else {
-      scoreBoy += pts + 25;
-    }
+    score += pts + 25;
     setScoreText();
   }
 
@@ -1497,7 +1185,7 @@
     const speed = BASE_POWER * (0.55 + 0.65 * pullT) * (pow.vMul || 1) * worldShotScale();
     const vx = dx * speed;
     const vy = dy * speed;
-    publishShot(vx, vy, emoji);
+    fireShot(vx, vy, emoji);
     dragCur = { x: SLING.x, y: SLING.y };
   }
 
@@ -1543,280 +1231,9 @@
   });
 
   refreshGameInfo();
-  document.getElementById('brokerInfo').innerHTML =
-    `MQTT WS: <span class="highlight">${BROKER_URL}</span>`;
-
-  let localConnected = false;
-  let localConnecting = true;
-  let partnerOk = false;
-  let partnerTrying = true;
-  let lastPartnerMsg = 0;
-  const connectStart = Date.now();
-  const connectionInfo = document.getElementById('connectionInfo');
-
-  function bumpPartnerSeen() {
-    lastPartnerMsg = Date.now();
-    const was = partnerOk;
-    partnerOk = true;
-    partnerTrying = false;
-    updateConn();
-    if (!was) {
-      ilog('partner linked', { lastPartnerMsg, seat: PLAYER_ID });
-    }
-    dlog('bumpPartnerSeen');
-  }
-
-  function updateConn() {
-    const b = localConnected ? 'BROKER OK' : localConnecting ? 'CONNECTING…' : 'OFFLINE';
-    const bc = localConnected ? '#7dffb3' : localConnecting ? '#ffe08a' : '#ff6b6b';
-    let p;
-    let pc;
-    if (SOLO || playAlone) {
-      p = playAlone ? '1-PLAYER (no link needed)' : 'SOLO';
-      pc = '#7dffb3';
-    } else {
-      p = partnerOk ? 'PARTNER LINKED' : partnerTrying ? 'WAITING…' : 'NO PARTNER';
-      pc = partnerOk ? '#7dffb3' : partnerTrying ? '#ffe08a' : '#ff6b6b';
-    }
-    connectionInfo.innerHTML = `MQTT: <span style="color:${bc}">${b}</span> · <span style="color:${pc}">${p}</span>`;
-    refreshLevelAuthorityUI();
-  }
-
-  let localStatus = '—';
-  let remoteStatus = '—';
-  const statusBtn = document.getElementById('statusBtn');
-  const statusInfo = document.getElementById('statusInfo');
-  function updateStatusDisplay() {
-    statusInfo.textContent = `You: ${localStatus} · ${cfg.remoteLabel}: ${remoteStatus}`;
-  }
-  statusBtn.addEventListener('click', () => {
-    localStatus = 'READY';
-    updateStatusDisplay();
-    publishStatus('READY');
-    beep(480, 0.05);
-  });
 
   canvas.classList.add('lobber-wait');
 
-  function onRemoteMessage(who, kind, raw) {
-    if (who === PLAYER_ID) {
-      return;
-    }
-    if (kind === 'sync' && who === 'Man' && IS_MAN) {
-      return;
-    }
-    try {
-      const data = kind === 'status' ? null : JSON.parse(raw.toString());
-      if (kind === 'status') {
-        remoteStatus = raw.toString();
-        updateStatusDisplay();
-        bumpPartnerSeen();
-        dlog('rx status', { from: who, text: remoteStatus });
-        return;
-      }
-      if (kind === 'level' && who === 'Man' && !IS_MAN) {
-        if (data && typeof data.levelId === 'number') {
-          hostLevelId = Math.max(0, Math.min(LEVELS.length - 1, data.levelId | 0));
-          selectedLevelIndex = hostLevelId;
-          if (!localLocked) {
-            loadLevel(hostLevelId);
-          }
-          syncLevelButtonHighlight();
-          refreshLevelAuthorityUI();
-        }
-        dlog('rx Man/level', data);
-        return;
-      }
-      if (kind === 'pick') {
-        remoteEmoji = (data && data.emoji) || '🙂';
-        remoteLocked = true;
-        if (who === 'Man' && data && typeof data.levelId === 'number') {
-          hostLevelId = Math.max(0, Math.min(LEVELS.length - 1, data.levelId | 0));
-          selectedLevelIndex = hostLevelId;
-          if (!localLocked) {
-            loadLevel(hostLevelId);
-            syncLevelButtonHighlight();
-          }
-        }
-        waitPartnerSince = Date.now();
-        updatePickStatus();
-        tryBeginMatch();
-        bumpPartnerSeen();
-        ilog('rx pick', { from: who, emoji: remoteEmoji, levelId: data && data.levelId, bothReady: localLocked && remoteLocked });
-        dlog('rx pick payload', data);
-        refreshLevelAuthorityUI();
-        return;
-      }
-      if (kind === 'shot') {
-        dlog('rx shot', { from: who, seq: data && data.seq, emoji: data && data.emoji });
-        startFlight(data.vx, data.vy, data.emoji || '🙂', who);
-        bumpPartnerSeen();
-        return;
-      }
-      if (kind === 'finish') {
-        dlog('rx finish', { from: who, seq: data && data.seq, nextTurn: data && data.nextTurn });
-        applyFinish(data);
-        return;
-      }
-      if (kind === 'sync' && who === 'Man' && !IS_MAN) {
-        dlog('rx sync incoming', { v: data && data.v, levelId: data && data.levelId });
-        applySync(data);
-        return;
-      }
-      if (kind === 'join' && who === 'Boy' && IS_MAN) {
-        ilog('rx join from Boy → sending sync', { levelId: currentLevelIndex, phase });
-        publishSync();
-        bumpPartnerSeen();
-        return;
-      }
-    } catch (err) {
-      ilog('onRemoteMessage parse error', { who, kind, err: String(err) });
-    }
-  }
-
-  function setupMQTT() {
-    if (SOLO) {
-      localConnected = true;
-      localConnecting = false;
-      playAlone = true;
-      updateConn();
-      refreshLevelAuthorityUI();
-      ilog('solo mode — MQTT skipped');
-      return;
-    }
-    const clientId = `lobber_${GAME_ID}_${PLAYER_ID}_${Math.random().toString(36).slice(2, 11)}`;
-    ilog('mqtt start', {
-      broker: BROKER_URL,
-      clientId,
-      gameId: GAME_ID,
-      seat: PLAYER_ID,
-      topicPattern: `lobber/${GAME_ID}/#`,
-      debugVerbose: LOBBER_DEBUG,
-    });
-    if (!LOBBER_DEBUG) {
-      console.info(`[Lobber:${PLAYER_ID}] Tip: add ?debug=1 to URL for verbose MQTT logs`);
-    }
-    client = mqtt.connect(BROKER_URL, {
-      clientId,
-      reconnectPeriod: 2500,
-      connectTimeout: 30000,
-    });
-    client.on('connect', () => {
-      localConnected = true;
-      localConnecting = false;
-      updateConn();
-      ilog('mqtt connected', { clientId });
-      client.subscribe(`lobber/${GAME_ID}/#`, { qos: 0 }, (err) => {
-        if (err) {
-          ilog('mqtt subscribe FAILED', err);
-        } else {
-          ilog('mqtt subscribed', { filter: `lobber/${GAME_ID}/#` });
-          if (IS_MAN && phase === 'pick' && !localLocked) {
-            publishLevelPreview(selectedLevelIndex);
-          }
-        }
-      });
-      if (!IS_MAN && !joinSent) {
-        joinSent = true;
-        setTimeout(publishJoin, 400);
-      }
-      if (localLocked && localEmoji) {
-        publishPick(localEmoji);
-        ilog('re-sent pick after reconnect', { emoji: localEmoji, levelId: selectedLevelIndex });
-      }
-      if (localStatus !== '—') {
-        publishStatus(localStatus);
-      }
-      if (IS_MAN && phase !== 'pick') {
-        publishSync();
-      }
-    });
-    client.on('error', (err) => {
-      ilog('mqtt error', err);
-    });
-    client.on('close', () => {
-      ilog('mqtt close');
-      localConnected = false;
-      localConnecting = false;
-      updateConn();
-    });
-    client.on('reconnect', () => {
-      ilog('mqtt reconnecting…');
-      localConnected = false;
-      localConnecting = true;
-      updateConn();
-    });
-    client.on('offline', () => {
-      ilog('mqtt offline');
-      localConnected = false;
-      localConnecting = false;
-      updateConn();
-    });
-    client.on('message', (topic, message) => {
-      dlog('mqtt message', topic, message.length, 'bytes');
-      const parts = topic.split('/');
-      if (parts.length < 4) {
-        dlog('skip topic (short)', topic);
-        return;
-      }
-      const who = parts[2];
-      const kind = parts[3];
-      onRemoteMessage(who, kind, message);
-    });
-  }
-
   setScoreText();
-  waitPartnerSince = Date.now();
   updatePickStatus();
-  updateConn();
-  updateStatusDisplay();
-  setupMQTT();
-
-  if (SOLO) {
-    remoteEmoji = '🎮';
-    remoteLocked = true;
-    partnerOk = true;
-    partnerTrying = false;
-    playAlone = true;
-    updatePickStatus();
-    updateConn();
-  }
-
-  setInterval(() => {
-    if (SOLO || playAlone || !client || !client.connected) {
-      return;
-    }
-    publishStatus(localStatus);
-    if (IS_MAN && phase === 'aim') {
-      publishSync();
-    }
-  }, 4000);
-
-  setInterval(() => {
-    if (SOLO || playAlone) {
-      return;
-    }
-    if (localLocked && !remoteLocked && localConnected && Date.now() - waitPartnerSince > JOIN_WAIT_MS) {
-      enterPlayAlone();
-    }
-  }, 800);
-
-  setInterval(() => {
-    if (SOLO || playAlone) {
-      return;
-    }
-    const now = Date.now();
-    if (partnerOk && lastPartnerMsg > 0 && now - lastPartnerMsg > 90000) {
-      partnerOk = false;
-      updateConn();
-    }
-  }, 5000);
-
-  updatePickStatus();
-
-  setInterval(() => {
-    if (pickOverlay && !pickOverlay.classList.contains('hidden') && localLocked && !remoteLocked && !playAlone && !SOLO) {
-      updatePickStatus();
-    }
-  }, 1000);
 })();

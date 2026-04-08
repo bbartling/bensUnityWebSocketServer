@@ -2,56 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Emoji Lobber — Boy</title>
-    <link rel="stylesheet" href="/lobber/lobber.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Emoji Lobber — moved</title>
+    <meta http-equiv="refresh" content="0;url=/lobber/man.html" />
     <style>
-      :root {
-        --accent: #ff6b8b;
+      body {
+        font-family: system-ui, sans-serif;
+        background: #1a1f2e;
+        color: #e8ecff;
+        padding: 2rem;
+        text-align: center;
+      }
+      a {
+        color: #9db4ff;
       }
     </style>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   </head>
   <body>
-    <div id="emojiPicker">
-      <h2>EMOJI LOBBER</h2>
-      <p class="pick-hint">
-        You join <strong>Man’s</strong> session. Pick a human-face hero (powers differ). <strong>Lava</strong> ends your shot if touched. If Man is already playing, you’ll catch up from sync.
-        No partner? After ~14s locked alone, <strong>1-player</strong> mode runs on this tab.
-      </p>
-      <p id="powerBlurb" class="power-blurb">Point at a face for its power — click to select.</p>
-      <p id="levelSelectLabel" class="level-select-label"></p>
-      <div id="levelButtons" class="level-buttons" aria-label="Choose level"></div>
-      <div id="emojiGrid" class="emoji-grid"></div>
-      <button type="button" id="lockEmoji">Lock in</button>
-      <p id="pickStatus"></p>
-    </div>
-    <div id="app">
-      <header>
-        <h1>EMOJI LOBBER</h1>
-        <div class="sub">Boy · slingshot lobs · pull back & release · emoji spins in flight</div>
-      </header>
-      <div id="boardWrap">
-        <canvas id="gameCanvas" width="900" height="520"></canvas>
-      </div>
-      <div id="score">MAN 0 · BOY 0</div>
-      <div id="turnLine"></div>
-      <div id="ui">
-        <div id="gameInfo"></div>
-        <div id="brokerInfo"></div>
-        <button type="button" id="statusBtn">Send ready ping</button>
-        <div id="statusInfo"></div>
-        <div id="connectionInfo"></div>
-        <p class="nav-other">
-          <a href="/">Dashboard</a> · <a href="/lobber/">Lobber seats</a> · Open <a href="/lobber/man.html">Man</a> in another window.
-          <br />
-          <span style="opacity: 0.7">Solo practice: add <code>?solo=1</code> to the URL.</span>
-        </p>
-      </div>
-    </div>
-    <script>
-      window.LOBBER_CONFIG = { seat: 'Boy', remoteLabel: 'Man', accent: '#ff6b8b' };
-    </script>
-    <script src="/lobber/lobber.js"></script>
+    <p>Emoji Lobber is now single-player only.</p>
+    <p><a href="/lobber/man.html">Open Emoji Lobber</a></p>
   </body>
 </html>

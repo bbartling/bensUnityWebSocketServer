@@ -3,21 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Emoji Lobber — Man</title>
+    <title>Emoji Lobber</title>
     <link rel="stylesheet" href="/lobber/lobber.css" />
     <style>
       :root {
         --accent: #6b8cff;
       }
     </style>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   </head>
   <body>
     <div id="emojiPicker">
       <h2>EMOJI LOBBER</h2>
       <p class="pick-hint">
-        <strong>Man = host.</strong> Pick a <em>human-face</em> hero (each has a power). Villain &amp; pig-like targets are on the right. <strong>Lava</strong> (glowing orange/red) ends your shot if you touch it.
-        If no one joins in ~14s after you lock, <strong>1-player</strong> starts automatically. Boy can join anytime — state syncs from Man.
+        Single-player physics puzzle: pick a <em>human-face</em> hero (each has a power). Knock down blocks and clear the
+        creature targets on the right. <strong>Lava</strong> (glowing orange/red) ends your shot if you touch it — plan
+        your arc. <strong>15 levels</strong> from easy to huge, zoomed-out stages.
       </p>
       <p id="powerBlurb" class="power-blurb">Point at a face for its power — click to select.</p>
       <p id="levelSelectLabel" class="level-select-label"></p>
@@ -29,28 +29,24 @@
     <div id="app">
       <header>
         <h1>EMOJI LOBBER</h1>
-        <div class="sub">Man · slingshot lobs · pull back & release · emoji spins in flight</div>
+        <div class="sub">Slingshot puzzle · pull back &amp; release · emoji spins in flight</div>
       </header>
       <div id="boardWrap">
         <canvas id="gameCanvas" width="900" height="520"></canvas>
       </div>
-      <div id="score">MAN 0 · BOY 0</div>
+      <div id="score">0 pts</div>
       <div id="turnLine"></div>
       <div id="ui">
         <div id="gameInfo"></div>
-        <div id="brokerInfo"></div>
-        <button type="button" id="statusBtn">Send ready ping</button>
-        <div id="statusInfo"></div>
-        <div id="connectionInfo"></div>
         <p class="nav-other">
-          <a href="/">Dashboard</a> · <a href="/lobber/">Lobber seats</a> · Open <a href="/lobber/boy.html">Boy</a> in another window.
-          <br />
-          <span style="opacity: 0.7">Solo practice: add <code>?solo=1</code> to the URL.</span>
+          <a href="/lobber/">About</a>
+          ·
+          <a href="/">Arcade</a>
         </p>
       </div>
     </div>
     <script>
-      window.LOBBER_CONFIG = { seat: 'Man', remoteLabel: 'Boy', accent: '#6b8cff' };
+      window.LOBBER_CONFIG = { seat: 'Man', accent: '#6b8cff' };
     </script>
     <script src="/lobber/lobber.js"></script>
   </body>
