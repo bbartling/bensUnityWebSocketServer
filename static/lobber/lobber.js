@@ -529,6 +529,53 @@
     return L.towers(base);
   }
 
+  /**
+   * Rebuild block list from the level template and apply only HP from the network.
+   * Fixes missing `kind` (e.g. lava drawn as wood) if sync JSON was trimmed or merged poorly.
+   */
+  function mergeTowersFromTemplate(levelIndex, rows) {
+    const template = cloneTowers(towersForLevel(levelIndex));
+    if (!rows || !rows.length) {
+      return template;
+    }
+    const hpById = {};
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (r && typeof r.id === 'number' && typeof r.hp === 'number') {
+        hpById[r.id] = r.hp;
+      }
+    }
+    return template.map((b) => {
+      const h = hpById[b.id];
+      if (h === undefined) {
+        return b;
+      }
+      const out = Object.assign({}, b);
+      out.hp = b.kind === 'lava' ? 9999 : h;
+      return out;
+    });
+  }
+
+  function repairTowerKindsFromTemplate() {
+    const template = towersForLevel(currentLevelIndex);
+    const byId = {};
+    for (let i = 0; i < template.length; i++) {
+      byId[template[i].id] = template[i];
+    }
+    for (let j = 0; j < towers.length; j++) {
+      const t = towers[j];
+      const ref = byId[t.id];
+      if (ref) {
+        if (t.kind !== ref.kind) {
+          t.kind = ref.kind;
+        }
+        if (t.kind === 'lava') {
+          t.hp = 9999;
+        }
+      }
+    }
+  }
+
   function loadLevel(levelIndex) {
     const idx = Math.max(0, Math.min(LEVELS.length - 1, levelIndex | 0));
     const L = LEVELS[idx];
@@ -607,6 +654,7 @@
   const lockBtn = document.getElementById('lockEmoji');
   const emojiGrid = document.getElementById('emojiGrid');
   const powerBlurb = document.getElementById('powerBlurb');
+  const levelSelectLabelEl = document.getElementById('levelSelectLabel');
 
   function syncCanvasSize() {
     const wrap = document.getElementById('boardWrap');
@@ -699,6 +747,58 @@
   let selectedLevelIndex = 0;
   const levelButtonsEl = document.getElementById('levelButtons');
 
+  function isNetworkedTwoPlayer() {
+    return !SOLO && !playAlone && client && client.connected;
+  }
+
+  /** In real 2P (MQTT, not solo / not 1P fallback), only Man picks the stage; Boy mirrors. */
+  function boyMustMirrorHostLevel() {
+    return !IS_MAN && isNetworkedTwoPlayer();
+  }
+
+  function refreshLevelAuthorityUI() {
+    if (levelSelectLabelEl) {
+      if (SOLO || playAlone) {
+        levelSelectLabelEl.innerHTML =
+          '<strong>Level</strong> — solo / no network: pick any of ' +
+          LEVELS.length +
+          ' stages. Wider = more zoomed out.';
+      } else if (IS_MAN) {
+        levelSelectLabelEl.innerHTML =
+          '<strong>You (host) choose the level</strong> for both players. Boy’s screen mirrors this list in real time.';
+      } else if (boyMustMirrorHostLevel()) {
+        levelSelectLabelEl.innerHTML =
+          '<strong>Man chooses the level</strong> — your buttons mirror his (read-only). ' +
+          (hostLevelId == null
+            ? 'Waiting for Man to change or lock a level…'
+            : 'Mirroring: <em>' +
+              (LEVELS[hostLevelId] && LEVELS[hostLevelId].name) +
+              '</em>.');
+      } else {
+        levelSelectLabelEl.innerHTML =
+          '<strong>Level</strong> — ' + LEVELS.length + ' stages. Connect to Man for 2P mirroring.';
+      }
+    }
+    if (!levelButtonsEl) {
+      return;
+    }
+    const dis = boyMustMirrorHostLevel() && !localLocked;
+    levelButtonsEl.querySelectorAll('button[data-level]').forEach((btn) => {
+      btn.disabled = !!dis;
+      btn.setAttribute('aria-disabled', dis ? 'true' : 'false');
+    });
+    levelButtonsEl.classList.toggle('level-buttons-mirrored', !!dis);
+  }
+
+  function publishLevelPreview(levelIdx) {
+    if (!IS_MAN || SOLO || playAlone || !client || !client.connected) {
+      return;
+    }
+    const idx = Math.max(0, Math.min(LEVELS.length - 1, levelIdx | 0));
+    client.publish(`lobber/${GAME_ID}/Man/level`, JSON.stringify({ levelId: idx, t: Date.now() }), { qos: 0 });
+    dlog('tx Man/level', { levelId: idx });
+  }
+
   function levelForNewMatch() {
     if (SOLO || playAlone || IS_MAN) {
       return selectedLevelIndex;
@@ -728,14 +828,21 @@
         if (localLocked) {
           return;
         }
+        if (boyMustMirrorHostLevel()) {
+          return;
+        }
         selectedLevelIndex = i;
         loadLevel(i);
         syncLevelButtonHighlight();
+        if (IS_MAN) {
+          publishLevelPreview(i);
+        }
         dlog('level selected', { i, name: L.name });
       });
       levelButtonsEl.appendChild(b);
     });
     syncLevelButtonHighlight();
+    refreshLevelAuthorityUI();
   }
 
   HERO_ROSTER.forEach((h) => {
@@ -807,6 +914,7 @@
     partnerTrying = false;
     updatePickStatus();
     updateConn();
+    refreshLevelAuthorityUI();
     tryBeginMatch();
   }
 
@@ -864,9 +972,11 @@
       return;
     }
     if (typeof data.levelId === 'number' && data.levelId >= 0 && data.levelId < LEVELS.length) {
+      hostLevelId = data.levelId;
+      selectedLevelIndex = data.levelId;
       loadLevel(data.levelId);
     }
-    towers = cloneTowers(data.towers);
+    towers = mergeTowersFromTemplate(currentLevelIndex, data.towers);
     scoreMan = data.scoreMan | 0;
     scoreBoy = data.scoreBoy | 0;
     turn = data.turn === 'Boy' ? 'Boy' : 'Man';
@@ -891,6 +1001,7 @@
       scores: { scoreMan: data.scoreMan, scoreBoy: data.scoreBoy },
     });
     syncLevelButtonHighlight();
+    refreshLevelAuthorityUI();
   }
 
   function publishShot(vx, vy, emoji) {
@@ -943,6 +1054,7 @@
         }
       });
     }
+    repairTowerKindsFromTemplate();
     projectile = null;
     phase = 'aim';
     shooterThisRound = null;
@@ -1467,6 +1579,7 @@
       pc = partnerOk ? '#7dffb3' : partnerTrying ? '#ffe08a' : '#ff6b6b';
     }
     connectionInfo.innerHTML = `MQTT: <span style="color:${bc}">${b}</span> · <span style="color:${pc}">${p}</span>`;
+    refreshLevelAuthorityUI();
   }
 
   let localStatus = '—';
@@ -1501,11 +1614,25 @@
         dlog('rx status', { from: who, text: remoteStatus });
         return;
       }
+      if (kind === 'level' && who === 'Man' && !IS_MAN) {
+        if (data && typeof data.levelId === 'number') {
+          hostLevelId = Math.max(0, Math.min(LEVELS.length - 1, data.levelId | 0));
+          selectedLevelIndex = hostLevelId;
+          if (!localLocked) {
+            loadLevel(hostLevelId);
+          }
+          syncLevelButtonHighlight();
+          refreshLevelAuthorityUI();
+        }
+        dlog('rx Man/level', data);
+        return;
+      }
       if (kind === 'pick') {
         remoteEmoji = (data && data.emoji) || '🙂';
         remoteLocked = true;
         if (who === 'Man' && data && typeof data.levelId === 'number') {
           hostLevelId = Math.max(0, Math.min(LEVELS.length - 1, data.levelId | 0));
+          selectedLevelIndex = hostLevelId;
           if (!localLocked) {
             loadLevel(hostLevelId);
             syncLevelButtonHighlight();
@@ -1517,6 +1644,7 @@
         bumpPartnerSeen();
         ilog('rx pick', { from: who, emoji: remoteEmoji, levelId: data && data.levelId, bothReady: localLocked && remoteLocked });
         dlog('rx pick payload', data);
+        refreshLevelAuthorityUI();
         return;
       }
       if (kind === 'shot') {
@@ -1552,6 +1680,7 @@
       localConnecting = false;
       playAlone = true;
       updateConn();
+      refreshLevelAuthorityUI();
       ilog('solo mode — MQTT skipped');
       return;
     }
@@ -1582,6 +1711,9 @@
           ilog('mqtt subscribe FAILED', err);
         } else {
           ilog('mqtt subscribed', { filter: `lobber/${GAME_ID}/#` });
+          if (IS_MAN && phase === 'pick' && !localLocked) {
+            publishLevelPreview(selectedLevelIndex);
+          }
         }
       });
       if (!IS_MAN && !joinSent) {
