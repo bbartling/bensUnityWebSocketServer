@@ -788,12 +788,18 @@
     }
   }
 
+  function syncBuilderNextIdFromTowers() {
+    const mx = towers.reduce((m, b) => Math.max(m, b.id | 0), 0);
+    builderNextId = Math.max(20000, mx + 1);
+  }
+
   function applyCustomWorld(w, h, sling, tw) {
     WORLD_W = Math.max(640, Math.min(2200, w | 0));
     WORLD_H = Math.max(480, Math.min(800, h | 0));
     GROUND_Y = Math.floor(WORLD_H * (458 / REF_WORLD_H));
     SLING = clampSling({ x: sling.x, y: sling.y });
     towers = cloneTowers(tw);
+    syncBuilderNextIdFromTowers();
     dragCur = { x: SLING.x, y: SLING.y };
     projectile = null;
     dragging = false;
@@ -837,11 +843,171 @@
     const tw = o.pieces.map((p) =>
       tower(p.id, p.x, p.y, p.w, p.h, p.hp, p.kind, p.pts || 0, p.emoji || ''),
     );
-    builderNextId = tw.reduce((m, b) => Math.max(m, b.id | 0), 19999) + 1;
     useCustomLevel = true;
     applyCustomWorld(o.worldW | 0, o.worldH | 0, o.sling || { x: 140, y: 300 }, tw);
     syncBuilderForm();
     return true;
+  }
+
+  /** Touching pieces with these kinds merge in the editor (same kind only). */
+  const MORPH_KINDS = ['beam', 'lava', 'vine', 'wood', 'stone'];
+
+  /** True if rects overlap or are within `gapSlop` world units (closes one-grid gaps between chained stamps). */
+  function rectsMergeChainable(a, b, gapSlop) {
+    const s = gapSlop;
+    return !(a.x + a.w < b.x - s || b.x + b.w < a.x - s || a.y + a.h < b.y - s || b.y + b.h < a.y - s);
+  }
+
+  function mergedMorphPiece(kind, minX, minY, maxX, maxY, hpSum, ptsSum, emoji) {
+    const w = Math.max(4, maxX - minX);
+    const h = Math.max(4, maxY - minY);
+    if (kind === 'beam') {
+      return beamPlank(allocBuilderId(), minX, minY, w, h);
+    }
+    if (kind === 'lava') {
+      return lavaBar(allocBuilderId(), minX, minY, w, h);
+    }
+    if (kind === 'vine') {
+      return vineHang(allocBuilderId(), minX, minY, w, h);
+    }
+    if (kind === 'wood') {
+      return tower(
+        allocBuilderId(),
+        minX,
+        minY,
+        w,
+        h,
+        Math.max(1, hpSum | 0),
+        'wood',
+        Math.max(0, ptsSum | 0),
+        emoji || '',
+      );
+    }
+    if (kind === 'stone') {
+      return tower(
+        allocBuilderId(),
+        minX,
+        minY,
+        w,
+        h,
+        Math.max(1, hpSum | 0),
+        'stone',
+        Math.max(0, ptsSum | 0),
+        emoji || '',
+      );
+    }
+    return null;
+  }
+
+  /** Union touching / overlapping same-kind morph pieces into one solid (erase removes whole morph). */
+  function mergeOnePass(kind) {
+    if (MORPH_KINDS.indexOf(kind) < 0) {
+      return false;
+    }
+    const idxs = [];
+    for (let i = 0; i < towers.length; i++) {
+      if (towers[i].kind === kind && towers[i].hp > 0) {
+        idxs.push(i);
+      }
+    }
+    if (idxs.length < 2) {
+      return false;
+    }
+    const n = idxs.length;
+    const parent = [];
+    for (let i = 0; i < n; i++) {
+      parent[i] = i;
+    }
+    function find(u) {
+      return parent[u] === u ? u : (parent[u] = find(parent[u]));
+    }
+    function unite(u, v) {
+      const ru = find(u);
+      const rv = find(v);
+      if (ru !== rv) {
+        parent[rv] = ru;
+      }
+    }
+    const chainGap = BUILD_GRID + 6;
+    for (let a = 0; a < n; a++) {
+      const ta = towers[idxs[a]];
+      for (let b = a + 1; b < n; b++) {
+        const tb = towers[idxs[b]];
+        if (rectsMergeChainable(ta, tb, chainGap)) {
+          unite(a, b);
+        }
+      }
+    }
+    const groups = new Map();
+    for (let i = 0; i < n; i++) {
+      const r = find(i);
+      if (!groups.has(r)) {
+        groups.set(r, []);
+      }
+      groups.get(r).push(i);
+    }
+    const removeIdx = new Set();
+    const additions = [];
+    for (const [, members] of groups) {
+      if (members.length < 2) {
+        continue;
+      }
+      let minX = 1e9;
+      let minY = 1e9;
+      let maxX = -1e9;
+      let maxY = -1e9;
+      let hpSum = 0;
+      let ptsSum = 0;
+      let emoji = '';
+      for (const m of members) {
+        const t = towers[idxs[m]];
+        minX = Math.min(minX, t.x);
+        minY = Math.min(minY, t.y);
+        maxX = Math.max(maxX, t.x + t.w);
+        maxY = Math.max(maxY, t.y + t.h);
+        hpSum += t.hp | 0;
+        ptsSum += t.pts | 0;
+        if (!emoji && t.emoji) {
+          emoji = t.emoji;
+        }
+        removeIdx.add(idxs[m]);
+      }
+      const nw = mergedMorphPiece(kind, minX, minY, maxX, maxY, hpSum, ptsSum, emoji);
+      if (nw) {
+        additions.push(nw);
+      }
+    }
+    if (!additions.length) {
+      return false;
+    }
+    const next = [];
+    for (let i = 0; i < towers.length; i++) {
+      if (!removeIdx.has(i)) {
+        next.push(towers[i]);
+      }
+    }
+    for (let j = 0; j < additions.length; j++) {
+      next.push(additions[j]);
+    }
+    towers = next;
+    return true;
+  }
+
+  function mergeMorphableKinds() {
+    if (editorMode !== 'edit') {
+      return;
+    }
+    let guard = 0;
+    let changed = true;
+    while (changed && guard < 24) {
+      guard += 1;
+      changed = false;
+      for (let k = 0; k < MORPH_KINDS.length; k++) {
+        if (mergeOnePass(MORPH_KINDS[k])) {
+          changed = true;
+        }
+      }
+    }
   }
 
   function placeStampAt(wx, wy) {
@@ -881,6 +1047,7 @@
       piece.y + piece.h <= WORLD_H - 8
     ) {
       towers.push(piece);
+      mergeMorphableKinds();
     }
   }
 
@@ -1096,8 +1263,12 @@
   }
 
   function builderPointerUp() {
+    const hadPieceDrag = !!buildDragPiece;
     buildDragPiece = null;
     buildDragSling = false;
+    if (editorMode === 'edit' && hadPieceDrag) {
+      mergeMorphableKinds();
+    }
   }
 
   function applyWorldPreset(key) {
@@ -1174,7 +1345,7 @@
       '<label class="lobber-builder-check"><input type="checkbox" id="lobberBuilderSnap" checked /> Snap grid</label>',
       '</div>',
       '<div class="lobber-builder-tools">',
-      '<span class="lobber-builder-hint">Tools — click to stamp · Vine traps · Beams are solid pinball rails (↔ / ↕)</span>',
+      '<span class="lobber-builder-hint">Tools — click to stamp · Same-kind beams / lava / vines / wood / stone chain-merge (small gaps OK) — Erase clears the whole morph</span>',
       '<button type="button" class="lobber-tool" data-build-tool="wood">Wood</button>',
       '<button type="button" class="lobber-tool" data-build-tool="stone">Stone</button>',
       '<button type="button" class="lobber-tool" data-build-tool="lava">Lava</button>',
@@ -1647,6 +1818,77 @@
     return dx * dx + dy * dy < r * r;
   }
 
+  function projectileStartsInsideAnyTower(ox, oy, er) {
+    for (const b of towers) {
+      if (b.hp > 0 && circleRectHit(ox, oy, er, b)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * First t in [0,1] where segment (ox,oy)→(nx,ny) enters the Minkowski sum of rect b with a disk of radius er.
+   * Used so fast shots cannot tunnel through wide merged planks in one frame.
+   */
+  function segmentEnterMinkowskiAabb(ox, oy, nx, ny, bx, by, bw, bh, er) {
+    const xmin = bx - er;
+    const xmax = bx + bw + er;
+    const ymin = by - er;
+    const ymax = by + bh + er;
+    const dx = nx - ox;
+    const dy = ny - oy;
+    function axisClip(o, d, lo, hi) {
+      if (Math.abs(d) < 1e-10) {
+        if (o < lo || o > hi) {
+          return null;
+        }
+        return [0, 1];
+      }
+      let t0 = (lo - o) / d;
+      let t1 = (hi - o) / d;
+      if (t0 > t1) {
+        const z = t0;
+        t0 = t1;
+        t1 = z;
+      }
+      return [t0, t1];
+    }
+    const xc = axisClip(ox, dx, xmin, xmax);
+    if (!xc) {
+      return null;
+    }
+    const yc = axisClip(oy, dy, ymin, ymax);
+    if (!yc) {
+      return null;
+    }
+    const t0 = Math.max(0, xc[0], yc[0]);
+    const t1 = Math.min(1, xc[1], yc[1]);
+    if (t0 > t1) {
+      return null;
+    }
+    return t0;
+  }
+
+  function earliestTowerPathHitT(ox, oy, nx, ny, er) {
+    if ((nx === ox && ny === oy) || projectileStartsInsideAnyTower(ox, oy, er)) {
+      return null;
+    }
+    let best = null;
+    for (const b of towers) {
+      if (b.hp <= 0) {
+        continue;
+      }
+      const t = segmentEnterMinkowskiAabb(ox, oy, nx, ny, b.x, b.y, b.w, b.h, er);
+      if (t != null && t >= 0 && t <= 1) {
+        if (best === null || t < best) {
+          best = t;
+        }
+      }
+    }
+    return best;
+  }
+
   function neighborSplashHit(broken, pwr, proj) {
     if (!pwr.splash) {
       return;
@@ -1822,11 +2064,21 @@
     }
     const p = projectile;
     p.vy += GRAVITY * dt * 60;
-    p.x += p.vx * dt * 60;
-    p.y += p.vy * dt * 60;
-    p.rot += (p.spin || SPIN_BASE) * dt;
-
+    const ox = p.x;
+    const oy = p.y;
+    const nx = ox + p.vx * dt * 60;
+    const ny = oy + p.vy * dt * 60;
     const er = projectileRadiusWorld();
+    const tHit = earliestTowerPathHitT(ox, oy, nx, ny, er);
+    if (tHit != null) {
+      const u = Math.min(1, Math.max(0, tHit + 1e-4));
+      p.x = ox + (nx - ox) * u;
+      p.y = oy + (ny - oy) * u;
+    } else {
+      p.x = nx;
+      p.y = ny;
+    }
+    p.rot += (p.spin || SPIN_BASE) * dt;
     if (p.y + er >= GROUND_Y) {
       p.y = GROUND_Y - er;
       p.vy *= -0.36;

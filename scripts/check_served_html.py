@@ -1,5 +1,8 @@
 """Basic smoke check: served HTML returns 200 and local static refs resolve.
 
+At the end prints '--- verification ---' and VERIFICATION: PASSED or FAILED
+(no errors means exit code 0 and a PASSED line with no FAIL lines above).
+
 For browser console / JS runtime issues, run (with Playwright installed):
 
   pip install playwright && playwright install chromium
@@ -60,33 +63,49 @@ def check_url(url: str) -> tuple[bool, str]:
 
 def main() -> int:
     issues: list[tuple[str, str]] = []
-    for path in PAGES:
-        body = fetch(BASE + path)
-        low = body.lower()
-        if "<html" not in low:
-            issues.append((path, "missing <html"))
-        if "</html>" not in low:
-            issues.append((path, "missing </html>"))
-        base_dir = path.rsplit("/", 1)[0] if "/" in path.strip("/") else ""
-        for m in ATTR_RE.findall(body):
-            if m.startswith(("http://", "https://", "mailto:", "data:", "#")):
-                continue
-            if m.startswith("javascript:"):
-                continue
-            if m.startswith("/"):
-                url = BASE + m
-            else:
-                prefix = BASE + (base_dir + "/" if base_dir else "/")
-                url = prefix + m
-            ok, msg = check_url(url)
-            if not ok:
-                issues.append((path, f"ref {m!r}: {msg}"))
+    try:
+        for path in PAGES:
+            body = fetch(BASE + path)
+            low = body.lower()
+            if "<html" not in low:
+                issues.append((path, "missing <html"))
+            if "</html>" not in low:
+                issues.append((path, "missing </html>"))
+            base_dir = path.rsplit("/", 1)[0] if "/" in path.strip("/") else ""
+            for m in ATTR_RE.findall(body):
+                if m.startswith(("http://", "https://", "mailto:", "data:", "#")):
+                    continue
+                if m.startswith("javascript:"):
+                    continue
+                if m.startswith("/"):
+                    url = BASE + m
+                else:
+                    prefix = BASE + (base_dir + "/" if base_dir else "/")
+                    url = prefix + m
+                ok, msg = check_url(url)
+                if not ok:
+                    issues.append((path, f"ref {m!r}: {msg}"))
+    except Exception as e:
+        print(f"FAIL fetch: {e}")
+        print()
+        print("--- verification ---")
+        print(f"VERIFICATION: FAILED - could not load pages from {BASE!r} (server down or wrong URL).")
+        return 1
 
     if issues:
         for p, msg in issues:
             print(f"FAIL {p}: {msg}")
+        print()
+        print("--- verification ---")
+        print(f"VERIFICATION: FAILED - {len(issues)} issue(s) (see FAIL lines above).")
         return 1
     print(f"OK: {len(PAGES)} pages, structure + local assets resolve at {BASE}")
+    print()
+    print("--- verification ---")
+    print(
+        f"VERIFICATION: PASSED - no errors: {len(PAGES)} pages, HTML shell OK, "
+        f"in-page local asset URLs returned HTTP 200 at {BASE}."
+    )
     return 0
 
 
