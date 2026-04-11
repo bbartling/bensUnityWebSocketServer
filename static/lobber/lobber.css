@@ -310,3 +310,190 @@ button#statusBtn:active {
 #emojiPicker.hidden {
   display: none;
 }
+
+body.lobber-builder-active #gameCanvas {
+  box-shadow:
+    0 0 0 3px #ffb347,
+    0 12px 40px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+#gameCanvas.lobber-canvas-build {
+  cursor: crosshair;
+}
+
+.lobber-open-builder {
+  display: inline-block;
+  margin: 12px auto 0;
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 184, 71, 0.55);
+  background: rgba(40, 32, 20, 0.95);
+  color: #ffe8a8;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.52rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.lobber-open-builder:hover {
+  border-color: rgba(255, 214, 120, 0.9);
+  color: #fff;
+}
+
+.lobber-builder-game-btns {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.lobber-builder-game-btns button {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.48rem;
+  letter-spacing: 0.06em;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 184, 71, 0.45);
+  background: rgba(28, 36, 52, 0.95);
+  color: #ffdca8;
+  cursor: pointer;
+}
+
+.lobber-builder-game-btns button:hover {
+  border-color: rgba(255, 200, 120, 0.85);
+  color: #fff;
+}
+
+.lobber-builder-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 400;
+  max-height: min(46vh, 420px);
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(18, 22, 32, 0.97) 0%, rgba(8, 10, 16, 0.99) 100%);
+  border-top: 2px solid rgba(255, 184, 71, 0.45);
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.55);
+  padding: 10px 12px 14px;
+}
+
+.lobber-builder-panel.hidden {
+  display: none;
+}
+
+.lobber-builder-inner {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.lobber-builder-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  color: #ffb347;
+  margin-bottom: 4px;
+}
+
+.lobber-builder-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 0.62rem;
+}
+
+.lobber-builder-label input[type='text'] {
+  width: 11rem;
+  max-width: 46vw;
+  margin-left: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(122, 240, 255, 0.25);
+  background: rgba(12, 16, 24, 0.95);
+  color: #e8ecf4;
+}
+
+.lobber-builder-label select {
+  margin-left: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(122, 240, 255, 0.25);
+  background: rgba(12, 16, 24, 0.95);
+  color: #e8ecf4;
+  font-size: 1rem;
+}
+
+.lobber-builder-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.lobber-builder-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0 10px;
+}
+
+.lobber-builder-hint {
+  width: 100%;
+  opacity: 0.78;
+  font-size: 0.58rem;
+}
+
+.lobber-tool {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.48rem;
+  letter-spacing: 0.06em;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(122, 240, 255, 0.35);
+  background: rgba(22, 30, 48, 0.95);
+  color: #c8d8f0;
+  cursor: pointer;
+}
+
+.lobber-tool.build-tool-on {
+  border-color: rgba(255, 184, 71, 0.85);
+  color: #ffe8a8;
+  box-shadow: 0 0 12px rgba(255, 184, 71, 0.25);
+}
+
+.lobber-builder-actions {
+  gap: 8px;
+}
+
+.lobber-builder-actions button,
+.lobber-builder-file {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.48rem;
+  letter-spacing: 0.06em;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(122, 240, 255, 0.35);
+  background: rgba(22, 30, 48, 0.95);
+  color: #c8d8f0;
+  cursor: pointer;
+}
+
+.lobber-builder-actions button:hover {
+  border-color: rgba(255, 184, 71, 0.55);
+  color: #fff;
+}
+
+.lobber-builder-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.lobber-builder-file {
+  display: inline-block;
+  padding: 8px 12px;
+}
