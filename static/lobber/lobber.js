@@ -632,6 +632,89 @@
     document.body.classList.add('lobber-builder-active');
   }
 
+  function hidePlaytestHud() {
+    const h = document.getElementById('lobberPlaytestHud');
+    if (h) {
+      h.classList.add('hidden');
+      h.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function syncPlaytestLevelPills() {
+    const wrap = document.getElementById('lobberPlaytestLevels');
+    if (!wrap) {
+      return;
+    }
+    wrap.querySelectorAll('button[data-level]').forEach((btn) => {
+      const n = parseInt(btn.getAttribute('data-level'), 10);
+      btn.classList.toggle('selected', n === selectedLevelIndex);
+    });
+  }
+
+  function showPlaytestHud() {
+    const h = document.getElementById('lobberPlaytestHud');
+    if (h) {
+      h.classList.remove('hidden');
+      h.setAttribute('aria-hidden', 'false');
+    }
+    syncPlaytestLevelPills();
+  }
+
+  function playtestSwitchCampaignLevel(i) {
+    if (editorMode !== 'test') {
+      return;
+    }
+    document.body.classList.remove('lobber-playtest');
+    hidePlaytestHud();
+    document.body.classList.add('lobber-builder-active');
+    builderTestSnapshot = null;
+    editorMode = 'edit';
+    phase = 'build';
+    projectile = null;
+    dragging = false;
+    selectedLevelIndex = i;
+    reloadBuilderFromSelectedStage();
+    syncLevelButtonHighlight();
+    syncPlaytestLevelPills();
+    showBuilderPanel();
+    refreshGameInfo();
+    syncPlayStopButtons();
+    setTurnLine();
+  }
+
+  function initPlaytestHud() {
+    if (document.getElementById('lobberPlaytestHud')) {
+      return;
+    }
+    const hud = document.createElement('div');
+    hud.id = 'lobberPlaytestHud';
+    hud.className = 'lobber-playtest-hud hidden';
+    hud.setAttribute('aria-hidden', 'true');
+    hud.innerHTML = [
+      '<div class="lobber-playtest-hud-inner">',
+      '<div class="lobber-playtest-hud-top">',
+      '<span class="lobber-playtest-badge">Play test</span>',
+      '<button type="button" class="lobber-playtest-stop" id="lobberPlaytestStopBtn">Stop test</button>',
+      '</div>',
+      '<div class="lobber-playtest-hud-sub">Campaign stages — tap to open that layout in the editor</div>',
+      '<div id="lobberPlaytestLevels" class="lobber-playtest-levels"></div>',
+      '</div>',
+    ].join('');
+    document.body.appendChild(hud);
+    document.getElementById('lobberPlaytestStopBtn').addEventListener('click', stopTestCustom);
+    const wrap = document.getElementById('lobberPlaytestLevels');
+    LEVELS.forEach((L, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'lobber-playtest-level-btn';
+      b.setAttribute('data-level', String(i));
+      b.textContent = L.name;
+      b.title = 'Leave play test and load this stage in the builder';
+      b.addEventListener('click', () => playtestSwitchCampaignLevel(i));
+      wrap.appendChild(b);
+    });
+  }
+
   function snapBuild(v) {
     if (!buildGridSnap) {
       return Math.round(v);
@@ -780,6 +863,8 @@
   }
 
   function enterLevelBuilder(fromCampaign, fromPicker) {
+    document.body.classList.remove('lobber-playtest');
+    hidePlaytestHud();
     builderReturnToPicker = !!fromPicker && !localLocked;
     useCustomLevel = true;
     editorMode = 'edit';
@@ -818,6 +903,8 @@
   }
 
   function exitLevelBuilder() {
+    document.body.classList.remove('lobber-playtest');
+    hidePlaytestHud();
     hideBuilderPanel();
     buildDragPiece = null;
     buildDragSling = false;
@@ -849,6 +936,10 @@
     phase = 'aim';
     dragging = false;
     projectile = null;
+    document.body.classList.add('lobber-playtest');
+    document.body.classList.remove('lobber-builder-active');
+    hideBuilderPanel();
+    showPlaytestHud();
     setTurnLine();
     refreshGameInfo();
     syncPlayStopButtons();
@@ -865,6 +956,10 @@
     phase = 'build';
     dragging = false;
     projectile = null;
+    document.body.classList.remove('lobber-playtest');
+    hidePlaytestHud();
+    document.body.classList.add('lobber-builder-active');
+    showBuilderPanel();
     setTurnLine();
     refreshGameInfo();
     syncPlayStopButtons();
@@ -1116,6 +1211,8 @@
       const r = new FileReader();
       r.onload = () => {
         if (importCustomJson(String(r.result || ''))) {
+          document.body.classList.remove('lobber-playtest');
+          hidePlaytestHud();
           editorMode = 'edit';
           phase = 'build';
           showBuilderPanel();
@@ -1329,6 +1426,10 @@
       turnLine.textContent = 'Shot in flight…';
       return;
     }
+    if (editorMode === 'test') {
+      turnLine.textContent = 'Play test — pull back & release · use the stage strip below to swap layouts';
+      return;
+    }
     turnLine.textContent = 'Pull back & release — drag from the slingshot pocket';
   }
 
@@ -1392,6 +1493,8 @@
     syncLevelButtonHighlight();
     refreshLevelAuthorityUI();
   }
+
+  initPlaytestHud();
 
   HERO_ROSTER.forEach((h) => {
     const b = document.createElement('button');

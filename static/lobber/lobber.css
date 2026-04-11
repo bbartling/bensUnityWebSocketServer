@@ -322,48 +322,228 @@ body.lobber-builder-active #gameCanvas {
   cursor: crosshair;
 }
 
+@keyframes lobber-builder-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 8px rgba(255, 120, 200, 0.45),
+      0 0 22px rgba(120, 200, 255, 0.35),
+      0 4px 0 rgba(0, 0, 0, 0.35);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow:
+      0 0 18px rgba(255, 200, 100, 0.75),
+      0 0 36px rgba(140, 180, 255, 0.55),
+      0 4px 0 rgba(0, 0, 0, 0.35);
+    filter: brightness(1.12);
+  }
+}
+
+@keyframes lobber-builder-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
 .lobber-open-builder {
+  position: relative;
   display: inline-block;
   margin: 12px auto 0;
-  padding: 10px 18px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 184, 71, 0.55);
-  background: rgba(40, 32, 20, 0.95);
-  color: #ffe8a8;
+  padding: 12px 26px;
+  border-radius: 14px;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(135deg, #1a1530 0%, #2a1f48 40%, #1a2844 100%) padding-box,
+    linear-gradient(120deg, #ff9ec5, #7af0ff, #c9a8ff, #ff9ec5) border-box;
+  background-size: 100% 100%, 220% 220%;
+  animation: lobber-builder-glow 2.4s ease-in-out infinite;
+  color: #fff8e8;
   font-family: 'Orbitron', sans-serif;
-  font-size: 0.52rem;
-  letter-spacing: 0.08em;
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px rgba(122, 240, 255, 0.45);
   cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.12s ease;
+}
+
+.lobber-open-builder::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.2) 45%,
+    transparent 55%
+  );
+  background-size: 200% 100%;
+  animation: lobber-builder-shimmer 2.8s linear infinite;
+  pointer-events: none;
+  border-radius: 12px;
 }
 
 .lobber-open-builder:hover {
-  border-color: rgba(255, 214, 120, 0.9);
+  transform: scale(1.04) translateY(-1px);
   color: #fff;
+}
+
+.lobber-open-builder:active {
+  transform: scale(0.98);
 }
 
 .lobber-builder-game-btns {
   margin-top: 10px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   justify-content: center;
 }
 
 .lobber-builder-game-btns button {
+  position: relative;
   font-family: 'Orbitron', sans-serif;
-  font-size: 0.48rem;
-  letter-spacing: 0.06em;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 184, 71, 0.45);
-  background: rgba(28, 36, 52, 0.95);
-  color: #ffdca8;
+  font-size: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 200, 120, 0.55);
+  background: linear-gradient(165deg, #352850 0%, #1e2a44 50%, #243a52 100%);
+  color: #ffeef8;
+  text-shadow: 0 0 10px rgba(255, 180, 255, 0.35);
   cursor: pointer;
+  box-shadow:
+    0 0 12px rgba(255, 140, 200, 0.25),
+    0 4px 0 rgba(0, 0, 0, 0.35);
+  animation: lobber-builder-glow 3s ease-in-out infinite;
+  transition:
+    transform 0.12s ease,
+    border-color 0.15s ease;
 }
 
 .lobber-builder-game-btns button:hover {
-  border-color: rgba(255, 200, 120, 0.85);
+  border-color: rgba(122, 240, 255, 0.85);
+  transform: translateY(-2px) scale(1.03);
   color: #fff;
+}
+
+.lobber-builder-game-btns button:active {
+  transform: translateY(1px);
+  box-shadow: 0 0 8px rgba(122, 240, 255, 0.35);
+}
+
+body.lobber-playtest #ui {
+  display: none !important;
+}
+
+body.lobber-playtest .lobber-builder-panel {
+  display: none !important;
+}
+
+body.lobber-playtest #lobberPlaytestHud {
+  display: block;
+}
+
+.lobber-playtest-hud {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 450;
+  padding: 10px 12px 14px;
+  background: linear-gradient(0deg, rgba(6, 8, 16, 0.98) 0%, rgba(14, 18, 32, 0.96) 100%);
+  border-top: 2px solid rgba(122, 240, 255, 0.35);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.lobber-playtest-hud.hidden {
+  display: none !important;
+}
+
+.lobber-playtest-hud-inner {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.lobber-playtest-hud-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.lobber-playtest-badge {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #7af0ff;
+  text-shadow: 0 0 14px rgba(122, 240, 255, 0.5);
+}
+
+.lobber-playtest-stop {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.52rem;
+  letter-spacing: 0.12em;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(180deg, #ff6b4a 0%, #c42a20 100%);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
+}
+
+.lobber-playtest-stop:hover {
+  filter: brightness(1.08);
+}
+
+.lobber-playtest-hud-sub {
+  font-size: 0.58rem;
+  opacity: 0.82;
+  margin-bottom: 8px;
+}
+
+.lobber-playtest-levels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: min(28vh, 200px);
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
+.lobber-playtest-level-btn {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.42rem;
+  letter-spacing: 0.05em;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(122, 240, 255, 0.35);
+  background: rgba(20, 28, 44, 0.95);
+  color: #c8d8f0;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.lobber-playtest-level-btn:hover {
+  border-color: rgba(255, 224, 138, 0.65);
+  color: #fff;
+}
+
+.lobber-playtest-level-btn.selected {
+  border-color: rgba(107, 140, 255, 0.9);
+  color: #ffe08a;
+  box-shadow: 0 0 10px rgba(107, 140, 255, 0.35);
 }
 
 .lobber-builder-panel {
