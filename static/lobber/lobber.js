@@ -40,16 +40,26 @@
     return t.map((b) => Object.assign({}, b));
   }
 
+  /**
+   * Hero hit radius + emoji draw size in **world units**.
+   * Wider levels zoom out; we shrink the ball so gaps (e.g. lava bands) stay fair vs block sizes.
+   */
+  function projectileRadiusWorld() {
+    const ref = 900;
+    const w = Math.max(ref * 0.75, WORLD_W);
+    return PR * Math.pow(ref / w, 0.42);
+  }
+
+  function projectileEmojiFontPx() {
+    return Math.max(16, Math.round(projectileRadiusWorld() * 2.05));
+  }
+
   function worldShotScale() {
     return Math.pow(WORLD_W / 900, 0.38);
   }
 
-  function effectivePR() {
-    return PR * Math.pow(WORLD_W / 900, 0.12);
-  }
-
   function splashRadiusWorld() {
-    return 96 * (WORLD_W / 900);
+    return 96 * Math.pow(WORLD_W / 900, 0.55);
   }
 
   function maxPullWorld() {
@@ -102,9 +112,9 @@
       if (lavaBetweenLayers && r < bottomN - 2 && r % 2 === 1) {
         const nextN = bottomN - r - 1;
         const nextRowW = nextN * cw + Math.max(0, nextN - 1) * hg;
-        const lw = Math.max(rowW, nextRowW) * 0.92;
-        const midY = y - vg / 2 - 4;
-        out.push(lavaBar(id++, cx - lw / 2, midY, lw, 8));
+        const lw = Math.max(rowW, nextRowW) * 0.88;
+        const midY = y - vg / 2 - 6;
+        out.push(lavaBar(id++, cx - lw / 2, midY, lw, 7));
       }
     }
     return out;
@@ -355,6 +365,7 @@
       id: 9,
       tier: 'Hard',
       name: 'H2 · Lava Citadel',
+      wallBouncesToHurtVillain: 1,
       worldW: 1520,
       worldH: 560,
       towers(b) {
@@ -384,6 +395,7 @@
       id: 10,
       tier: 'Hard',
       name: 'H3 · Grand Pyramid',
+      wallBouncesToHurtVillain: 1,
       worldW: 1580,
       worldH: 570,
       towers(b) {
@@ -399,6 +411,7 @@
       id: 11,
       tier: 'Hard',
       name: 'H4 · Gauntlet',
+      wallBouncesToHurtVillain: 1,
       worldW: 1680,
       worldH: 580,
       towers(b) {
@@ -424,6 +437,7 @@
       id: 12,
       tier: 'Impossible',
       name: 'I1 · Hell Hold',
+      wallBouncesToHurtVillain: 1,
       worldW: 1780,
       worldH: 600,
       towers(b) {
@@ -433,6 +447,8 @@
         const y3 = w - 240;
         return [
           lavaBar(700, z - 30, b - 24, 520, 20),
+          tower(698, z + 52, b - 268, 52, 26, 4, 'stone', 90, ''),
+          tower(699, z + 118, b - 232, 40, 26, 4, 'stone', 90, ''),
           tower(701, z, b - 40, 36, 40, 2, 'wood', 60, ''),
           tower(702, z + 40, b - 40, 36, 40, 2, 'wood', 60, ''),
           tower(703, z + 80, b - 40, 36, 40, 2, 'wood', 60, ''),
@@ -457,6 +473,7 @@
       id: 13,
       tier: 'Impossible',
       name: 'I2 · Caldera Peak',
+      wallBouncesToHurtVillain: 1,
       worldW: 1880,
       worldH: 610,
       towers(b) {
@@ -473,6 +490,7 @@
       id: 14,
       tier: 'Impossible',
       name: 'I3 · Apocalypse',
+      wallBouncesToHurtVillain: 1,
       worldW: 1980,
       worldH: 620,
       towers(b) {
@@ -517,6 +535,12 @@
     return L.towers(base);
   }
 
+  function wallBouncesRequired() {
+    const L = LEVELS[currentLevelIndex];
+    const n = L && L.wallBouncesToHurtVillain;
+    return typeof n === 'number' && n > 0 ? n : 0;
+  }
+
   function loadLevel(levelIndex) {
     const idx = Math.max(0, Math.min(LEVELS.length - 1, levelIndex | 0));
     const L = LEVELS[idx];
@@ -537,7 +561,12 @@
     }
     const L = LEVELS[currentLevelIndex] || LEVELS[0];
     const tier = L.tier ? `<span style="opacity:0.85">${L.tier}</span> · ` : '';
-    el.innerHTML = `${tier}<span class="highlight">${L.name}</span> <span style="opacity:0.75">(${WORLD_W}×${WORLD_H})</span>`;
+    const wb = wallBouncesRequired();
+    const ric =
+      wb > 0
+        ? ` <span style="opacity:0.78">· Ricochet: bank off wood/stone (${wb}+) before villains take damage.</span>`
+        : '';
+    el.innerHTML = `${tier}<span class="highlight">${L.name}</span> <span style="opacity:0.75">(${WORLD_W}×${WORLD_H})</span>${ric}`;
   }
 
   let currentLevelIndex = 0;
@@ -558,8 +587,30 @@
   let dragging = false;
   let dragCur = { x: SLING.x, y: SLING.y };
 
+  const LOBBER_MUTE_KEY = 'lobber_audio_muted';
+
+  function audioMuted() {
+    try {
+      return window.localStorage.getItem(LOBBER_MUTE_KEY) === '1';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function setAudioMuted(muted) {
+    try {
+      window.localStorage.setItem(LOBBER_MUTE_KEY, muted ? '1' : '0');
+    } catch (e) {
+      /* ignore */
+    }
+    syncMuteToggle();
+  }
+
   let audioCtx = null;
   function beep(f, t) {
+    if (audioMuted()) {
+      return;
+    }
     if (!audioCtx) {
       try {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -588,6 +639,31 @@
   const emojiGrid = document.getElementById('emojiGrid');
   const powerBlurb = document.getElementById('powerBlurb');
   const levelSelectLabelEl = document.getElementById('levelSelectLabel');
+
+  const muteBtn = document.createElement('button');
+  muteBtn.type = 'button';
+  muteBtn.id = 'lobberMuteBtn';
+  muteBtn.setAttribute('aria-label', 'Toggle sound');
+  muteBtn.style.cssText =
+    'margin-top:10px;font-family:Orbitron,sans-serif;font-size:0.55rem;letter-spacing:0.1em;padding:8px 14px;border-radius:8px;border:1px solid rgba(122,240,255,0.35);background:rgba(18,26,40,0.95);color:#c8d8f0;cursor:pointer;';
+  function syncMuteToggle() {
+    muteBtn.textContent = audioMuted() ? 'Sound: off' : 'Sound: on';
+  }
+  syncMuteToggle();
+  muteBtn.addEventListener('click', () => setAudioMuted(!audioMuted()));
+  const uiHost = document.getElementById('ui');
+  if (uiHost) {
+    uiHost.appendChild(muteBtn);
+  }
+
+  function resumeAudioIfNeeded() {
+    if (!audioCtx || audioMuted()) {
+      return;
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(function () {});
+    }
+  }
 
   function syncCanvasSize() {
     const wrap = document.getElementById('boardWrap');
@@ -730,6 +806,7 @@
     if (!localEmoji || localLocked) {
       return;
     }
+    resumeAudioIfNeeded();
     localLocked = true;
     lockBtn.disabled = true;
     updatePickStatus();
@@ -779,6 +856,7 @@
       rot: 0,
       spin: SPIN_BASE * (p.spinMul || 1),
       power: p,
+      structureBounces: 0,
     };
     setTurnLine();
   }
@@ -820,12 +898,16 @@
     return dx * dx + dy * dy < r * r;
   }
 
-  function neighborSplashHit(broken, pwr) {
+  function neighborSplashHit(broken, pwr, proj) {
     if (!pwr.splash) {
       return;
     }
+    const need = wallBouncesRequired();
     for (const b of towers) {
       if (b.hp <= 0 || b.id === broken.id || b.kind === 'lava') {
+        continue;
+      }
+      if (b.kind === 'villain' && need > 0 && proj && (proj.structureBounces || 0) < need) {
         continue;
       }
       const dist = Math.hypot(b.x + b.w / 2 - (broken.x + broken.w / 2), b.y + b.h / 2 - (broken.y + broken.h / 2));
@@ -859,7 +941,7 @@
       if (b.hp <= 0) {
         continue;
       }
-      if (!circleRectHit(p.x, p.y, effectivePR(), b)) {
+      if (!circleRectHit(p.x, p.y, projectileRadiusWorld(), b)) {
         continue;
       }
       if (b.kind === 'lava') {
@@ -874,7 +956,7 @@
       let dx = p.x - nx;
       let dy = p.y - ny;
       const d = Math.hypot(dx, dy) || 0.001;
-      const er = effectivePR();
+      const er = projectileRadiusWorld();
       const pen = er - d;
       p.x += (dx / d) * pen * 0.55;
       p.y += (dy / d) * pen * 0.55;
@@ -882,9 +964,18 @@
       dy /= d;
       const vn = p.vx * dx + p.vy * dy;
       const bm = (pr.bounceMul || 1) * BOUNCE_DAMP;
+      if (vn < -0.28 && (b.kind === 'wood' || b.kind === 'stone')) {
+        p.structureBounces = (p.structureBounces || 0) + 1;
+      }
       if (vn < 0) {
         p.vx -= 2 * vn * dx * bm;
         p.vy -= 2 * vn * dy * bm;
+      }
+      const needRic = wallBouncesRequired();
+      const villainArmored = b.kind === 'villain' && needRic > 0 && (p.structureBounces || 0) < needRic;
+      if (villainArmored) {
+        beep(130, 0.04);
+        continue;
       }
       let dmg = pr.dmg || 1;
       if (b.kind === 'wood') {
@@ -897,7 +988,7 @@
       if (b.hp <= 0) {
         addScoreForBreak(b);
         spawnDebris(b.x + b.w / 2, b.y + b.h / 2, b.emoji || '👹');
-        neighborSplashHit(b, pr);
+        neighborSplashHit(b, pr, p);
         beep(b.kind === 'villain' ? 540 : 320, 0.07);
       } else {
         beep(210, 0.03);
@@ -930,7 +1021,7 @@
     p.y += p.vy * dt * 60;
     p.rot += (p.spin || SPIN_BASE) * dt;
 
-    const er = effectivePR();
+    const er = projectileRadiusWorld();
     if (p.y + er >= GROUND_Y) {
       p.y = GROUND_Y - er;
       p.vy *= -0.36;
@@ -1048,7 +1139,7 @@
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rot);
-    ctx.font = `${Math.round(PR * 2 * slingScale())}px serif`;
+    ctx.font = `${projectileEmojiFontPx()}px serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(emoji, 0, 2);
@@ -1141,6 +1232,7 @@
   requestAnimationFrame(frame);
 
   function tryStartDrag(wx, wy) {
+    resumeAudioIfNeeded();
     if (phase !== 'aim' || activeTurn() !== PLAYER_ID) {
       return;
     }
