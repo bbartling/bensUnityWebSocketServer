@@ -398,6 +398,63 @@ body.lobber-builder-active #gameCanvas {
   transform: scale(0.98);
 }
 
+/* Dock “Play test” — same energy as main menu Level builder CTA */
+.lobber-builder-play-primary {
+  position: relative;
+  overflow: hidden;
+  padding: 12px 22px !important;
+  border-radius: 12px !important;
+  border: 2px solid transparent !important;
+  background:
+    linear-gradient(135deg, #1a1530 0%, #2a1f48 45%, #1a2844 100%) padding-box,
+    linear-gradient(118deg, #ff9ec5, #7af0ff, #c9a8ff, #ff9ec5) border-box !important;
+  background-size: 100% 100%, 220% 220%;
+  animation: lobber-builder-glow 2.4s ease-in-out infinite;
+  color: #fff8e8 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.12em !important;
+  text-shadow: 0 0 12px rgba(122, 240, 255, 0.45);
+  box-shadow:
+    0 0 10px rgba(255, 120, 200, 0.35),
+    0 4px 0 rgba(0, 0, 0, 0.35) !important;
+}
+
+.lobber-builder-play-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.22) 45%,
+    transparent 55%
+  );
+  background-size: 200% 100%;
+  animation: lobber-builder-shimmer 2.8s linear infinite;
+  pointer-events: none;
+  border-radius: 10px;
+}
+
+.lobber-builder-play-primary:hover:not(:disabled) {
+  transform: scale(1.04) translateY(-1px);
+  color: #fff !important;
+}
+
+.lobber-builder-play-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.lobber-builder-play-primary:disabled {
+  animation: none;
+  opacity: 0.42;
+  filter: grayscale(0.35);
+  cursor: not-allowed;
+}
+
+.lobber-builder-play-primary:disabled::after {
+  display: none;
+}
+
 .lobber-builder-game-btns {
   margin-top: 10px;
   display: flex;

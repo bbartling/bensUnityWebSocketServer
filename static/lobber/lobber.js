@@ -129,6 +129,16 @@
     return { id, x, y, w, h, hp: 9999, kind: 'lava', pts: 0, emoji: '' };
   }
 
+  /** Hanging vine — indestructible; ball slows and can get “stuck” until the shot ends. */
+  function vineHang(id, x, y, w, h) {
+    return { id, x, y, w, h, hp: 9999, kind: 'vine', pts: 0, emoji: '' };
+  }
+
+  /** Indestructible wood beam — pinball-style bounces (horizontal or vertical from builder). */
+  function beamPlank(id, x, y, w, h) {
+    return { id, x, y, w, h, hp: 9999, kind: 'beam', pts: 0, emoji: '' };
+  }
+
   /**
    * Stacked pyramid: bottom row has `bottomN` blocks, apex is one villain.
    * If `lavaBetweenLayers`, thin lava strips sit between every other brick layer.
@@ -763,6 +773,12 @@
     if (kind === 'lava') {
       return 9999;
     }
+    if (kind === 'vine') {
+      return 9999;
+    }
+    if (kind === 'beam') {
+      return 9999;
+    }
     return 1;
   }
 
@@ -850,6 +866,12 @@
       piece = lavaBar(allocBuilderId(), x, y, 120, 12);
     } else if (buildTool === 'villain') {
       piece = tower(allocBuilderId(), x, y, 48, 48, 1, 'villain', 400, buildVillainEmoji);
+    } else if (buildTool === 'vine') {
+      piece = vineHang(allocBuilderId(), x, y, 14, 140);
+    } else if (buildTool === 'beamH') {
+      piece = beamPlank(allocBuilderId(), x, y, 112, 14);
+    } else if (buildTool === 'beamV') {
+      piece = beamPlank(allocBuilderId(), x, y, 14, 112);
     }
     if (
       piece &&
@@ -1152,10 +1174,13 @@
       '<label class="lobber-builder-check"><input type="checkbox" id="lobberBuilderSnap" checked /> Snap grid</label>',
       '</div>',
       '<div class="lobber-builder-tools">',
-      '<span class="lobber-builder-hint">Tools — click canvas to stamp / select:</span>',
+      '<span class="lobber-builder-hint">Tools — click to stamp · Vine traps · Beams are solid pinball rails (↔ / ↕)</span>',
       '<button type="button" class="lobber-tool" data-build-tool="wood">Wood</button>',
       '<button type="button" class="lobber-tool" data-build-tool="stone">Stone</button>',
       '<button type="button" class="lobber-tool" data-build-tool="lava">Lava</button>',
+      '<button type="button" class="lobber-tool" data-build-tool="vine" title="Hanging vine — slows and traps the shot">Vine</button>',
+      '<button type="button" class="lobber-tool" data-build-tool="beamH" title="Solid beam — horizontal, bouncy">Beam ↔</button>',
+      '<button type="button" class="lobber-tool" data-build-tool="beamV" title="Solid beam — vertical, bouncy">Beam ↕</button>',
       '<button type="button" class="lobber-tool" data-build-tool="villain">Villain</button>',
       '<button type="button" class="lobber-tool" data-build-tool="move">Move</button>',
       '<button type="button" class="lobber-tool" data-build-tool="sling">Slingshot</button>',
@@ -1164,7 +1189,7 @@
       '<div class="lobber-builder-row lobber-builder-actions">',
       '<button type="button" id="lobberBuilderBlank">New blank</button>',
       '<button type="button" id="lobberBuilderCloneStage">Copy selected stage</button>',
-      '<button type="button" id="lobberBuilderPlay">Play test</button>',
+      '<button type="button" id="lobberBuilderPlay" class="lobber-builder-play-primary">Play test</button>',
       '<button type="button" id="lobberBuilderStop" disabled>Stop test</button>',
       '<button type="button" id="lobberBuilderExport">Save JSON</button>',
       '<label class="lobber-builder-file">Load <input type="file" id="lobberBuilderFile" accept=".json,application/json" style="display:none" /></label>',
@@ -1580,6 +1605,7 @@
       spin: SPIN_BASE * (p.spinMul || 1),
       power: p,
       structureBounces: 0,
+      vineStuck: false,
     };
     setTurnLine();
   }
@@ -1627,7 +1653,7 @@
     }
     const need = wallBouncesRequired();
     for (const b of towers) {
-      if (b.hp <= 0 || b.id === broken.id || b.kind === 'lava') {
+      if (b.hp <= 0 || b.id === broken.id || b.kind === 'lava' || b.kind === 'vine' || b.kind === 'beam') {
         continue;
       }
       if (b.kind === 'villain' && need > 0 && proj && (proj.structureBounces || 0) < need) {
@@ -1673,6 +1699,49 @@
         beep(90, 0.22);
         completeShotAndAdvanceTurn();
         return;
+      }
+      if (b.kind === 'vine') {
+        const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
+        const ny = Math.max(b.y, Math.min(p.y, b.y + b.h));
+        let dx = p.x - nx;
+        let dy = p.y - ny;
+        const d = Math.hypot(dx, dy) || 0.001;
+        const er = projectileRadiusWorld();
+        const pen = er - d;
+        p.x += (dx / d) * pen * 0.5;
+        p.y += (dy / d) * pen * 0.5;
+        p.vx *= 0.16;
+        p.vy = p.vy * 0.2 + 0.14;
+        p.spin = (p.spin || 0) * 0.88;
+        p.vineStuck = true;
+        beep(175, 0.028);
+        continue;
+      }
+      if (b.kind === 'beam') {
+        const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
+        const ny = Math.max(b.y, Math.min(p.y, b.y + b.h));
+        let dx = p.x - nx;
+        let dy = p.y - ny;
+        const d = Math.hypot(dx, dy) || 0.001;
+        const er = projectileRadiusWorld();
+        const pen = er - d;
+        p.x += (dx / d) * pen * 0.58;
+        p.y += (dy / d) * pen * 0.58;
+        dx /= d;
+        dy /= d;
+        const vn = p.vx * dx + p.vy * dy;
+        const bmPin = (pr.bounceMul || 1) * 0.9;
+        if (vn < -0.22) {
+          p.structureBounces = (p.structureBounces || 0) + 1;
+        }
+        if (vn < 0) {
+          p.vx -= 2 * vn * dx * bmPin;
+          p.vy -= 2 * vn * dy * bmPin;
+        }
+        const sp = p.spin || SPIN_BASE;
+        p.spin = sp * 1.05 + (Math.random() - 0.5) * 3.5;
+        beep(268, 0.02);
+        continue;
       }
       const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
       const ny = Math.max(b.y, Math.min(p.y, b.y + b.h));
@@ -1734,6 +1803,19 @@
     }
   }
 
+  function projectileOverlapsAnyVine(p) {
+    const er = projectileRadiusWorld();
+    for (const b of towers) {
+      if (b.hp <= 0 || b.kind !== 'vine') {
+        continue;
+      }
+      if (circleRectHit(p.x, p.y, er, b)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function tickFlight(dt) {
     if (!projectile || phase !== 'flight') {
       return;
@@ -1764,8 +1846,78 @@
     const grounded = p.y + er >= GROUND_Y - 0.5;
     const oob = p.x > WORLD_W + 140 || p.x < -140;
     const settled = grounded && spd < 2.05;
-    if (oob || settled) {
+    const inVine = projectileOverlapsAnyVine(p);
+    const vineDone = inVine && spd < 0.48;
+    if (oob || settled || vineDone) {
       completeShotAndAdvanceTurn();
+    }
+  }
+
+  function drawBeam(b) {
+    const g = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y + b.h);
+    g.addColorStop(0, '#6b4a2a');
+    g.addColorStop(0.45, '#a67c52');
+    g.addColorStop(0.55, '#8f6a44');
+    g.addColorStop(1, '#4a321c');
+    ctx.fillStyle = g;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = 'rgba(40, 24, 12, 0.55)';
+    ctx.lineWidth = Math.max(1.5, (2 * WORLD_W) / REF_WORLD_W);
+    ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 1;
+    if (b.w >= b.h) {
+      const mid = b.y + b.h / 2;
+      ctx.beginPath();
+      ctx.moveTo(b.x + 4, mid);
+      ctx.lineTo(b.x + b.w - 4, mid);
+      ctx.stroke();
+    } else {
+      const mid = b.x + b.w / 2;
+      ctx.beginPath();
+      ctx.moveTo(mid, b.y + 4);
+      ctx.lineTo(mid, b.y + b.h - 4);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(60, 45, 30, 0.35)';
+    ctx.fillRect(b.x + 2, b.y + 2, Math.min(8, b.w * 0.15), Math.min(8, b.h * 0.35));
+    ctx.fillRect(b.x + b.w - 10, b.y + b.h - 10, 8, 8);
+  }
+
+  function drawVine(b) {
+    const cx = b.x + b.w / 2;
+    const g = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y + b.h);
+    g.addColorStop(0, '#1a4d28');
+    g.addColorStop(0.35, '#3d8f4f');
+    g.addColorStop(0.7, '#2d6a3a');
+    g.addColorStop(1, '#153820');
+    ctx.fillStyle = g;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = 'rgba(25, 80, 40, 0.75)';
+    ctx.lineWidth = Math.max(1.2, b.w * 0.12);
+    ctx.beginPath();
+    const segs = Math.max(5, Math.floor(b.h / 28));
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      const yy = b.y + t * b.h;
+      const sway = Math.sin(t * Math.PI * 2.4 + b.x * 0.03) * (b.w * 0.42);
+      const xx = cx + sway;
+      if (i === 0) {
+        ctx.moveTo(xx, yy);
+      } else {
+        ctx.lineTo(xx, yy);
+      }
+    }
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(160, 240, 140, 0.45)';
+    ctx.lineWidth = 1;
+    for (let k = 0; k < 5; k++) {
+      const ty = b.y + (k + 0.45) * (b.h / 5);
+      const side = k % 2 === 0 ? 1 : -1;
+      ctx.beginPath();
+      ctx.moveTo(cx, ty);
+      ctx.quadraticCurveTo(cx + side * (b.w + 10), ty - 6, cx + side * 6, ty - 14);
+      ctx.stroke();
     }
   }
 
@@ -1804,6 +1956,12 @@
         ctx.strokeStyle = 'rgba(255, 220, 120, 0.75)';
         ctx.lineWidth = Math.max(2, (2.5 * WORLD_W) / REF_WORLD_W);
         ctx.strokeRect(b.x, b.y, b.w, b.h);
+        continue;
+      } else if (b.kind === 'vine') {
+        drawVine(b);
+        continue;
+      } else if (b.kind === 'beam') {
+        drawBeam(b);
         continue;
       } else if (b.kind === 'stone') {
         ctx.fillStyle = '#7a8a9a';
