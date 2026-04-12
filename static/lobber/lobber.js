@@ -799,6 +799,9 @@
     GROUND_Y = Math.floor(WORLD_H * (458 / REF_WORLD_H));
     SLING = clampSling({ x: sling.x, y: sling.y });
     towers = cloneTowers(tw);
+    if (useCustomLevel) {
+      mergeMorphableKinds();
+    }
     syncBuilderNextIdFromTowers();
     dragCur = { x: SLING.x, y: SLING.y };
     projectile = null;
@@ -849,8 +852,8 @@
     return true;
   }
 
-  /** Touching pieces with these kinds merge in the editor (same kind only). */
-  const MORPH_KINDS = ['beam', 'lava', 'vine', 'wood', 'stone'];
+  /** Same-kind touching pieces merge into one (custom levels: load, export, play, and editor). */
+  const MORPH_KINDS = ['beam', 'lava', 'vine', 'wood', 'stone', 'villain'];
 
   /** True if rects overlap or are within `gapSlop` world units (closes one-grid gaps between chained stamps). */
   function rectsMergeChainable(a, b, gapSlop) {
@@ -896,6 +899,19 @@
         emoji || '',
       );
     }
+    if (kind === 'villain') {
+      return tower(
+        allocBuilderId(),
+        minX,
+        minY,
+        w,
+        h,
+        Math.max(1, hpSum | 0),
+        'villain',
+        Math.max(0, ptsSum | 0),
+        emoji || buildVillainEmoji,
+      );
+    }
     return null;
   }
 
@@ -928,7 +944,7 @@
         parent[rv] = ru;
       }
     }
-    const chainGap = BUILD_GRID + 6;
+    const chainGap = BUILD_GRID * 2 + 8;
     for (let a = 0; a < n; a++) {
       const ta = towers[idxs[a]];
       for (let b = a + 1; b < n; b++) {
@@ -994,7 +1010,7 @@
   }
 
   function mergeMorphableKinds() {
-    if (editorMode !== 'edit') {
+    if (!useCustomLevel) {
       return;
     }
     let guard = 0;
@@ -1116,6 +1132,7 @@
     if (!useCustomLevel || editorMode !== 'edit') {
       return;
     }
+    mergeMorphableKinds();
     builderTestSnapshot = snapshotCustomLevel();
     resetCourseHp();
     score = 0;
@@ -1155,6 +1172,7 @@
   }
 
   function exportCustomJson() {
+    mergeMorphableKinds();
     const blob = new Blob([snapshotCustomLevel()], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -1345,7 +1363,7 @@
       '<label class="lobber-builder-check"><input type="checkbox" id="lobberBuilderSnap" checked /> Snap grid</label>',
       '</div>',
       '<div class="lobber-builder-tools">',
-      '<span class="lobber-builder-hint">Tools — click to stamp · Same-kind beams / lava / vines / wood / stone chain-merge (small gaps OK) — Erase clears the whole morph</span>',
+      '<span class="lobber-builder-hint">Tools — click to stamp · Same-kind pieces (beams, lava, vines, wood, stone, villain) chain-merge on load / export / play — Erase clears the whole morph</span>',
       '<button type="button" class="lobber-tool" data-build-tool="wood">Wood</button>',
       '<button type="button" class="lobber-tool" data-build-tool="stone">Stone</button>',
       '<button type="button" class="lobber-tool" data-build-tool="lava">Lava</button>',
@@ -1972,17 +1990,23 @@
         dx /= d;
         dy /= d;
         const vn = p.vx * dx + p.vy * dy;
-        const bmPin = (pr.bounceMul || 1) * 0.9;
-        if (vn < -0.22) {
-          p.structureBounces = (p.structureBounces || 0) + 1;
+        const bumpOnce = p._beamVelBump || null;
+        if (!bumpOnce || !bumpOnce.has(b.id)) {
+          if (bumpOnce) {
+            bumpOnce.add(b.id);
+          }
+          const bmPin = (pr.bounceMul || 1) * 0.9;
+          if (vn < -0.22) {
+            p.structureBounces = (p.structureBounces || 0) + 1;
+          }
+          if (vn < 0) {
+            p.vx -= 2 * vn * dx * bmPin;
+            p.vy -= 2 * vn * dy * bmPin;
+          }
+          const sp = p.spin || SPIN_BASE;
+          p.spin = sp * 1.05 + (Math.random() - 0.5) * 3.5;
+          beep(268, 0.02);
         }
-        if (vn < 0) {
-          p.vx -= 2 * vn * dx * bmPin;
-          p.vy -= 2 * vn * dy * bmPin;
-        }
-        const sp = p.spin || SPIN_BASE;
-        p.spin = sp * 1.05 + (Math.random() - 0.5) * 3.5;
-        beep(268, 0.02);
         continue;
       }
       const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
@@ -2018,16 +2042,22 @@
       if (b.kind === 'stone') {
         dmg = pr.stoneDmg || dmg;
       }
-      b.hp -= dmg;
-      if (b.hp <= 0) {
-        addScoreForBreak(b);
-        spawnDebris(b.x + b.w / 2, b.y + b.h / 2, b.emoji || '👹');
-        neighborSplashHit(b, pr, p);
-        beep(b.kind === 'villain' ? 540 : 320, 0.07);
-      } else {
-        beep(210, 0.03);
+      const skipDmg = p._dmgOnce && p._dmgOnce.has(b.id);
+      if (!skipDmg) {
+        b.hp -= dmg;
+        if (p._dmgOnce) {
+          p._dmgOnce.add(b.id);
+        }
+        if (b.hp <= 0) {
+          addScoreForBreak(b);
+          spawnDebris(b.x + b.w / 2, b.y + b.h / 2, b.emoji || '👹');
+          neighborSplashHit(b, pr, p);
+          beep(b.kind === 'villain' ? 540 : 320, 0.07);
+        } else {
+          beep(210, 0.03);
+        }
+        setScoreText();
       }
-      setScoreText();
     }
   }
 
@@ -2063,36 +2093,45 @@
       return;
     }
     const p = projectile;
-    p.vy += GRAVITY * dt * 60;
-    const ox = p.x;
-    const oy = p.y;
-    const nx = ox + p.vx * dt * 60;
-    const ny = oy + p.vy * dt * 60;
+    p._dmgOnce = new Set();
+    p._beamVelBump = new Set();
     const er = projectileRadiusWorld();
-    const tHit = earliestTowerPathHitT(ox, oy, nx, ny, er);
-    if (tHit != null) {
-      const u = Math.min(1, Math.max(0, tHit + 1e-4));
-      p.x = ox + (nx - ox) * u;
-      p.y = oy + (ny - oy) * u;
-    } else {
-      p.x = nx;
-      p.y = ny;
-    }
-    p.rot += (p.spin || SPIN_BASE) * dt;
-    if (p.y + er >= GROUND_Y) {
-      p.y = GROUND_Y - er;
-      p.vy *= -0.36;
-      p.vx *= REST_FRICTION;
-      if (Math.abs(p.vy) < 0.95) {
-        p.vy = 0;
+    const gStep = (GRAVITY * dt * 60) / 1;
+    const moveScale = dt * 60;
+    const preVy = p.vy + gStep;
+    const moveLen = Math.hypot(p.vx * moveScale, preVy * moveScale);
+    const nStep = Math.min(12, Math.max(1, Math.ceil(moveLen / Math.max(4, er * 0.22))));
+
+    for (let si = 0; si < nStep; si++) {
+      p.vy += gStep / nStep;
+      const ox = p.x;
+      const oy = p.y;
+      const nx = ox + (p.vx * moveScale) / nStep;
+      const ny = oy + (p.vy * moveScale) / nStep;
+      const tHit = earliestTowerPathHitT(ox, oy, nx, ny, er);
+      if (tHit != null) {
+        const u = Math.min(1, Math.max(0, tHit + 1e-4));
+        p.x = ox + (nx - ox) * u;
+        p.y = oy + (ny - oy) * u;
+      } else {
+        p.x = nx;
+        p.y = ny;
+      }
+      if (p.y + er >= GROUND_Y) {
+        p.y = GROUND_Y - er;
+        p.vy *= -0.36;
+        p.vx *= REST_FRICTION;
+        if (Math.abs(p.vy) < 0.95) {
+          p.vy = 0;
+        }
+      }
+      resolveHits(p);
+      if (!projectile) {
+        return;
       }
     }
 
-    resolveHits(p);
-
-    if (!projectile) {
-      return;
-    }
+    p.rot += (p.spin || SPIN_BASE) * dt;
 
     const spd = Math.hypot(p.vx, p.vy);
     const grounded = p.y + er >= GROUND_Y - 0.5;
