@@ -23,8 +23,8 @@
     }
   }
 
-  const CANVAS_W = 900;
-  const CANVAS_H = 520;
+  let CANVAS_W = 900;
+  let CANVAS_H = 520;
   let WORLD_W = 900;
   let WORLD_H = 520;
   let GROUND_Y = 458;
@@ -626,7 +626,7 @@
     return typeof n === 'number' && n > 0 ? n : 0;
   }
 
-  const BUILD_TILE = 32;
+  const BUILD_TILE = 24;
   const BUILD_GRID = BUILD_TILE;
   const BUILDER_UNDO_LIMIT = 50;
   let builderUndoStack = [];
@@ -926,9 +926,6 @@
     WORLD_H = Math.max(480, Math.min(800, h | 0));
     GROUND_Y = Math.floor(WORLD_H * (458 / REF_WORLD_H));
     towers = cloneTowers(tw);
-    if (useCustomLevel) {
-      mergeMorphableKinds();
-    }
     SLING = placeSlingInValidZone({ x: sling.x, y: sling.y });
     syncBuilderNextIdFromTowers();
     dragCur = { x: SLING.x, y: SLING.y };
@@ -1138,7 +1135,7 @@
   }
 
   function mergeMorphableKinds() {
-    if (!useCustomLevel) {
+    if (!useCustomLevel || editorMode !== 'test') {
       return;
     }
     let guard = 0;
@@ -1193,7 +1190,6 @@
     ) {
       pushBuilderUndo(`place ${buildTool}`);
       towers.push(piece);
-      mergeMorphableKinds();
     }
   }
 
@@ -1264,17 +1260,17 @@
     if (!useCustomLevel || editorMode !== 'edit') {
       return;
     }
-    mergeMorphableKinds();
     if (aliveVillainCount() < 1) {
       turnLine.textContent = 'Add at least 1 villain before Play test.';
       return;
     }
     builderTestSnapshot = snapshotCustomLevel();
+    editorMode = 'test';
+    mergeMorphableKinds();
     resetCourseHp();
     score = 0;
     debris = [];
     setScoreText();
-    editorMode = 'test';
     phase = 'aim';
     dragging = false;
     projectile = null;
@@ -1308,7 +1304,6 @@
   }
 
   function exportCustomJson() {
-    mergeMorphableKinds();
     const blob = new Blob([snapshotCustomLevel()], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -1447,9 +1442,6 @@
     buildDragSling = false;
     buildDragSlingStart = null;
     buildDragSlingUndoSnap = '';
-    if (editorMode === 'edit' && hadPieceDrag) {
-      mergeMorphableKinds();
-    }
   }
 
   function applyWorldPreset(key) {
@@ -1762,11 +1754,33 @@
 
   function syncCanvasSize() {
     const wrap = document.getElementById('boardWrap');
-    const maxW = Math.max(240, (wrap && wrap.clientWidth) || CANVAS_W);
-    const maxH = Math.max(200, (wrap && wrap.clientHeight) || CANVAS_H);
-    const s = Math.min(maxW / CANVAS_W, maxH / CANVAS_H);
-    canvas.style.width = `${Math.floor(CANVAS_W * s)}px`;
-    canvas.style.height = `${Math.floor(CANVAS_H * s)}px`;
+    const availW = Math.max(480, (wrap && wrap.clientWidth) || CANVAS_W);
+    const availH = Math.max(320, (wrap && wrap.clientHeight) || CANVAS_H);
+    const fitMul = 0.95;
+    const targetW = availW * fitMul;
+    const targetH = availH * fitMul;
+    const aspect = WORLD_W / Math.max(1, WORLD_H);
+    let cssW = targetW;
+    let cssH = cssW / aspect;
+    if (cssH > targetH) {
+      cssH = targetH;
+      cssW = cssH * aspect;
+    }
+    cssW = Math.max(560, cssW);
+    cssH = Math.max(320, cssH);
+
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const longEdge = Math.max(cssW, cssH) * dpr;
+    let backingScale = 1;
+    if (longEdge > 1760) {
+      backingScale = 1760 / longEdge;
+    }
+
+    CANVAS_W = Math.max(640, Math.floor(cssW * dpr * backingScale));
+    CANVAS_H = Math.max(360, Math.floor(cssH * dpr * backingScale));
+
+    canvas.style.width = `${Math.floor(cssW)}px`;
+    canvas.style.height = `${Math.floor(cssH)}px`;
     canvas.width = CANVAS_W;
     canvas.height = CANVAS_H;
   }

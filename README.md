@@ -17,6 +17,9 @@ FastAPI app that serves a small **MQTT Arcade** dashboard plus static HTML clien
 - Canonical Lobber URL is **only** `/lobber/game.html`.
 - Lobber `man.html` and `boy.html` files/references are intentionally removed for single-player packaging.
 - Keep `/lobber/index.html` as the landing/info page and `/lobber/game.html` as the playable build.
+- Builder mode keeps every stamp as an individual grid tile (Mario Maker style).
+- Play test compiles touching same-kind tiles into merged collision pieces only for that play session.
+- Stopping play test restores the original unmerged edit layout, and JSON export saves the unmerged tiles.
 - When preparing the Coolmath package, include the Lobber runtime files under `static/lobber/` (`game.html`, `index.html`, `lobber.js`, `lobber.css`) plus any assets they reference.
 
 ## Local install and run

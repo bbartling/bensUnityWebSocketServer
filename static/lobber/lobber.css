@@ -501,6 +501,19 @@ body.lobber-playtest #ui {
   display: none !important;
 }
 
+body.lobber-playtest header {
+  display: none;
+}
+
+body.lobber-playtest #app {
+  padding: 0;
+  gap: 0;
+}
+
+body.lobber-playtest #boardWrap {
+  padding: 0;
+}
+
 body.lobber-playtest .lobber-builder-panel {
   display: none !important;
 }
