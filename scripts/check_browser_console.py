@@ -80,10 +80,11 @@ def run_lobber_functional_smoke(page) -> list[str]:
         if play_btn.count() != 1:
             fails.append("missing #lobberBuilderPlay")
             return fails
+        page.once("dialog", lambda d: d.accept())
         play_btn.click(timeout=4000)
         page.wait_for_timeout(300)
         txt = turn_line.inner_text(timeout=4000).lower()
-        if "at least 1 villain" not in txt:
+        if "at least 1 villain" not in txt and "at least one villain" not in txt:
             fails.append("missing no-villain play-test gate message")
     except Exception as e:
         fails.append(f"functional smoke exception: {e}")

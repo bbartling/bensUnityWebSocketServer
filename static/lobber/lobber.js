@@ -757,6 +757,37 @@
     };
   }
 
+  /** Axis-aligned overlap (world units). */
+  function rectsOverlapWorld(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  /**
+   * Custom levels: rectangle where the slingshot is allowed to sit (see clampSling).
+   * In the editor, no blocks may be placed here (Mario Maker style reserved corner).
+   */
+  function customLauncherReservedRect() {
+    const padX = 36;
+    const padTop = 64;
+    const padBot = 48;
+    const y0 = Math.max(padTop, WORLD_H * 0.8);
+    const y1 = GROUND_Y - padBot;
+    const x0 = padX;
+    const x1 = WORLD_W * 0.25;
+    return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+  }
+
+  function pieceOverlapsCustomLauncherReserved(piece) {
+    if (!useCustomLevel || editorMode !== 'edit' || !piece) {
+      return false;
+    }
+    const zone = customLauncherReservedRect();
+    if (zone.w < 1 || zone.h < 1) {
+      return false;
+    }
+    return rectsOverlapWorld(piece, zone);
+  }
+
   function aliveVillainCount() {
     let n = 0;
     for (const b of towers) {
@@ -977,7 +1008,7 @@
     return true;
   }
 
-  /** Same-kind touching pieces merge into one (custom levels: load, export, play, and editor). */
+  /** Same-kind touching pieces merge into one body (custom levels: compiled in play test only). */
   const MORPH_KINDS = ['beam', 'lava', 'vine', 'wood', 'stone', 'villain'];
 
   /** True if rects overlap or are within `gapSlop` world units (closes one-grid gaps between chained stamps). */
@@ -1159,6 +1190,7 @@
       if (hit) {
         pushBuilderUndo('erase piece');
         towers = towers.filter((t) => t.id !== hit.id);
+        syncPlayStopButtons();
       }
       return;
     }
@@ -1188,8 +1220,13 @@
       piece.x + piece.w <= WORLD_W - 6 &&
       piece.y + piece.h <= WORLD_H - 8
     ) {
+      if (pieceOverlapsCustomLauncherReserved(piece)) {
+        turnLine.textContent = 'Cannot build in the launcher zone (bottom-left reserved area).';
+        return;
+      }
       pushBuilderUndo(`place ${buildTool}`);
       towers.push(piece);
+      syncPlayStopButtons();
     }
   }
 
@@ -1261,7 +1298,9 @@
       return;
     }
     if (aliveVillainCount() < 1) {
-      turnLine.textContent = 'Add at least 1 villain before Play test.';
+      const msg = 'Add at least one villain before Play test. Villains are the level objective.';
+      turnLine.textContent = msg;
+      window.alert(msg);
       return;
     }
     builderTestSnapshot = snapshotCustomLevel();
@@ -1349,6 +1388,11 @@
     const stopB = document.getElementById('lobberBuilderStop');
     if (playB) {
       playB.disabled = editorMode !== 'edit';
+      if (!playB.disabled && useCustomLevel && aliveVillainCount() < 1) {
+        playB.title = 'Add at least one villain — Play test needs a target to clear.';
+      } else {
+        playB.title = '';
+      }
     }
     if (stopB) {
       stopB.disabled = editorMode !== 'test';
@@ -1413,8 +1457,13 @@
         let ny = snapBuild(wy - buildDragPiece.oy);
         nx = Math.max(4, Math.min(WORLD_W - b.w - 4, nx));
         ny = Math.max(4, Math.min(GROUND_Y - b.h - 2, ny));
-        b.x = nx;
-        b.y = ny;
+        const trial = { x: nx, y: ny, w: b.w, h: b.h };
+        if (!pieceOverlapsCustomLauncherReserved(trial)) {
+          b.x = nx;
+          b.y = ny;
+        } else {
+          turnLine.textContent = 'Cannot move blocks into the launcher zone (bottom-left reserved area).';
+        }
       }
     }
   }
@@ -1422,9 +1471,17 @@
   function builderPointerUp() {
     const hadSlingDrag = !!buildDragSling;
     const hadPieceDrag = !!buildDragPiece;
-    if (editorMode === 'edit' && hadPieceDrag) {
-      const b = towers.find((t) => t.id === buildDragPiece.id);
-      if (b && buildDragPieceStart && (b.x !== buildDragPieceStart.x || b.y !== buildDragPieceStart.y)) {
+    const draggedPieceId = hadPieceDrag ? buildDragPiece.id : null;
+    const savedPieceStart =
+      hadPieceDrag && buildDragPieceStart ? { x: buildDragPieceStart.x, y: buildDragPieceStart.y } : null;
+    if (editorMode === 'edit' && hadPieceDrag && draggedPieceId != null) {
+      const b = towers.find((t) => t.id === draggedPieceId);
+      if (b && pieceOverlapsCustomLauncherReserved(b) && savedPieceStart) {
+        b.x = savedPieceStart.x;
+        b.y = savedPieceStart.y;
+        turnLine.textContent = 'Cannot leave blocks in the launcher zone (bottom-left reserved area).';
+      }
+      if (b && savedPieceStart && (b.x !== savedPieceStart.x || b.y !== savedPieceStart.y)) {
         pushBuilderUndoSnapshot('move piece', buildDragPieceUndoSnap);
       }
     }
@@ -1521,7 +1578,7 @@
       '<label class="lobber-builder-check"><input type="checkbox" id="lobberBuilderSnap" checked /> Snap grid</label>',
       '</div>',
       '<div class="lobber-builder-tools">',
-      '<span class="lobber-builder-hint">Mario-style builder: one-tile pieces on a shared grid · Same-kind touching pieces merge · Erase clears a merged piece</span>',
+      '<span class="lobber-builder-hint">Mario-style builder: one-tile pieces on a shared grid · Bottom-left launcher area is no-build · Same-kind tiles merge only in Play test · Erase clears a merged piece</span>',
       '<button type="button" class="lobber-tool" data-build-tool="wood">Wood</button>',
       '<button type="button" class="lobber-tool" data-build-tool="stone">Stone</button>',
       '<button type="button" class="lobber-tool" data-build-tool="lava">Lava</button>',
@@ -2557,6 +2614,25 @@
     ctx.restore();
   }
 
+  function drawLauncherReservedZoneOverlay() {
+    if (!useCustomLevel) {
+      return;
+    }
+    const z = customLauncherReservedRect();
+    if (z.w < 2 || z.h < 2) {
+      return;
+    }
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 120, 90, 0.1)';
+    ctx.strokeStyle = 'rgba(255, 200, 140, 0.38)';
+    ctx.setLineDash([10, 7]);
+    ctx.lineWidth = Math.max(1.5, (WORLD_W / REF_WORLD_W) * 1.1);
+    ctx.fillRect(z.x, z.y, z.w, z.h);
+    ctx.strokeRect(z.x + 0.5, z.y + 0.5, z.w - 1, z.h - 1);
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
   function drawAimVector() {
     if (!dragging || phase !== 'aim') {
       return;
@@ -2596,6 +2672,7 @@
     drawDebris();
     if (phase === 'build' && editorMode === 'edit') {
       drawBuildGrid();
+      drawLauncherReservedZoneOverlay();
     }
 
     const aimEmoji = localEmoji || '🙂';
