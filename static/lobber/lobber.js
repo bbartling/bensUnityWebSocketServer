@@ -128,6 +128,10 @@
     return { id, x, y, w, h, hp, kind, pts: pts || 0, emoji: emoji || '' };
   }
 
+  function isMetalKind(kind) {
+    return kind === 'metal' || kind === 'beam';
+  }
+
   /** Indestructible — touching ends the shot (emoji “dies”). */
   function lavaBar(id, x, y, w, h) {
     return { id, x, y, w, h, hp: 9999, kind: 'lava', pts: 0, emoji: '' };
@@ -138,12 +142,12 @@
     return { id, x, y, w, h, hp: 9999, kind: 'vine', pts: 0, emoji: '' };
   }
 
-  /** Indestructible wood beam — pinball-style bounces (horizontal or vertical from builder). */
-  function beamPlank(id, x, y, w, h) {
-    return { id, x, y, w, h, hp: 9999, kind: 'beam', pts: 0, emoji: '' };
+  /** Indestructible metal rail — pinball-style bounces (legacy JSON may still say kind "beam"). */
+  function metalRail(id, x, y, w, h) {
+    return { id, x, y, w, h, hp: 9999, kind: 'metal', pts: 0, emoji: '' };
   }
 
-  /** Rebuild one JSON level piece with the correct constructor (beams/lava/vines stay indestructible). */
+  /** Rebuild one JSON level piece with the correct constructor (metal/lava/vines stay indestructible). */
   function pieceFromLevelJson(p) {
     const id = p.id | 0;
     const x = p.x | 0;
@@ -151,8 +155,8 @@
     const w = Math.max(4, p.w | 0);
     const h = Math.max(4, p.h | 0);
     const kind = p.kind || 'wood';
-    if (kind === 'beam') {
-      return beamPlank(id, x, y, w, h);
+    if (isMetalKind(kind)) {
+      return metalRail(id, x, y, w, h);
     }
     if (kind === 'lava') {
       return lavaBar(id, x, y, w, h);
@@ -906,7 +910,7 @@
     if (kind === 'vine') {
       return 9999;
     }
-    if (kind === 'beam') {
+    if (isMetalKind(kind)) {
       return 9999;
     }
     return 1;
@@ -1041,9 +1045,12 @@
   }
 
   /** Same-kind touching pieces merge into one body (custom levels: compiled in play test only). */
-  const MORPH_KINDS = ['beam', 'lava', 'vine', 'wood', 'stone', 'villain'];
+  const MORPH_KINDS = ['metal', 'lava', 'vine', 'wood', 'stone', 'villain'];
 
-  /** True if rects overlap or are within `gapSlop` world units (closes one-grid gaps between chained stamps). */
+  /** Max gap (world px) for merge — only true adjacency / tiny snap error, not wide air gaps. */
+  const MERGE_GAP_SLOP = 5;
+
+  /** True if rects overlap or are within `gapSlop` world units on an axis (touching / micro-gap only). */
   function rectsMergeChainable(a, b, gapSlop) {
     const s = gapSlop;
     return !(a.x + a.w < b.x - s || b.x + b.w < a.x - s || a.y + a.h < b.y - s || b.y + b.h < a.y - s);
@@ -1052,8 +1059,8 @@
   function mergedMorphPiece(kind, minX, minY, maxX, maxY, hpSum, ptsSum, emoji) {
     const w = Math.max(4, maxX - minX);
     const h = Math.max(4, maxY - minY);
-    if (kind === 'beam') {
-      return beamPlank(allocBuilderId(), minX, minY, w, h);
+    if (kind === 'metal') {
+      return metalRail(allocBuilderId(), minX, minY, w, h);
     }
     if (kind === 'lava') {
       return lavaBar(allocBuilderId(), minX, minY, w, h);
@@ -1110,7 +1117,9 @@
     }
     const idxs = [];
     for (let i = 0; i < towers.length; i++) {
-      if (towers[i].kind === kind && towers[i].hp > 0) {
+      const tk = towers[i].kind;
+      const match = kind === 'metal' ? isMetalKind(tk) : tk === kind;
+      if (match && towers[i].hp > 0) {
         idxs.push(i);
       }
     }
@@ -1132,12 +1141,11 @@
         parent[rv] = ru;
       }
     }
-    const chainGap = BUILD_GRID * 2 + 8;
     for (let a = 0; a < n; a++) {
       const ta = towers[idxs[a]];
       for (let b = a + 1; b < n; b++) {
         const tb = towers[idxs[b]];
-        if (rectsMergeChainable(ta, tb, chainGap)) {
+        if (rectsMergeChainable(ta, tb, MERGE_GAP_SLOP)) {
           unite(a, b);
         }
       }
@@ -1201,6 +1209,11 @@
     if (!useCustomLevel || editorMode !== 'test') {
       return;
     }
+    for (let i = 0; i < towers.length; i++) {
+      if (towers[i].kind === 'beam') {
+        towers[i].kind = 'metal';
+      }
+    }
     let guard = 0;
     let changed = true;
     while (changed && guard < 24) {
@@ -1240,10 +1253,8 @@
       piece = tower(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE, 1, 'villain', 400, buildVillainEmoji);
     } else if (buildTool === 'vine') {
       piece = vineHang(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE);
-    } else if (buildTool === 'beamH') {
-      piece = beamPlank(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE);
-    } else if (buildTool === 'beamV') {
-      piece = beamPlank(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE);
+    } else if (buildTool === 'metal') {
+      piece = metalRail(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE);
     }
     if (
       piece &&
@@ -1610,13 +1621,12 @@
       '<label class="lobber-builder-check"><input type="checkbox" id="lobberBuilderSnap" checked /> Snap grid</label>',
       '</div>',
       '<div class="lobber-builder-tools">',
-      '<span class="lobber-builder-hint">Mario-style builder: one-tile pieces on a shared grid · No-build over launcher (corner zone + sling pocket) · Beams are indestructible in play · Same-kind tiles merge only in Play test · Erase clears a merged piece</span>',
+      '<span class="lobber-builder-hint">Mario-style builder: one-tile pieces on a shared grid · No-build over launcher (corner zone + sling pocket) · Metal is indestructible in play · Same-kind tiles merge only when touching (Play test) · Erase clears a merged piece</span>',
       '<button type="button" class="lobber-tool" data-build-tool="wood">Wood</button>',
       '<button type="button" class="lobber-tool" data-build-tool="stone">Stone</button>',
       '<button type="button" class="lobber-tool" data-build-tool="lava">Lava</button>',
       '<button type="button" class="lobber-tool" data-build-tool="vine" title="Hanging vine — slows and traps the shot">Vine</button>',
-      '<button type="button" class="lobber-tool" data-build-tool="beamH" title="Solid beam — horizontal, bouncy">Beam ↔</button>',
-      '<button type="button" class="lobber-tool" data-build-tool="beamV" title="Solid beam — vertical, bouncy">Beam ↕</button>',
+      '<button type="button" class="lobber-tool" data-build-tool="metal" title="Solid metal — indestructible, bouncy">Metal</button>',
       '<button type="button" class="lobber-tool" data-build-tool="villain">Villain</button>',
       '<button type="button" class="lobber-tool" data-build-tool="move">Move</button>',
       '<button type="button" class="lobber-tool" data-build-tool="sling">Slingshot</button>',
@@ -1731,7 +1741,7 @@
     const wb = wallBouncesRequired();
     const ric =
       wb > 0
-        ? ` <span style="opacity:0.78">· Ricochet: bank off wood/stone (${wb}+) before villains take damage.</span>`
+        ? ` <span style="opacity:0.78">· Ricochet: bank off wood, stone, or metal (${wb}+) before villains take damage.</span>`
         : '';
     const obj = useCustomLevel ? ' <span style="opacity:0.82">· Objective: clear all villains.</span>' : '';
     const edit =
@@ -2191,7 +2201,7 @@
     }
     const need = wallBouncesRequired();
     for (const b of towers) {
-      if (b.hp <= 0 || b.id === broken.id || b.kind === 'lava' || b.kind === 'vine' || b.kind === 'beam') {
+      if (b.hp <= 0 || b.id === broken.id || b.kind === 'lava' || b.kind === 'vine' || isMetalKind(b.kind)) {
         continue;
       }
       if (b.kind === 'villain' && need > 0 && proj && (proj.structureBounces || 0) < need) {
@@ -2246,7 +2256,7 @@
         if (b.hp <= 0 || b.kind === 'lava') {
           continue;
         }
-        if (b.kind !== 'vine' && b.kind !== 'beam' && b.kind !== 'wood' && b.kind !== 'stone' && b.kind !== 'villain') {
+        if (b.kind !== 'vine' && !isMetalKind(b.kind) && b.kind !== 'wood' && b.kind !== 'stone' && b.kind !== 'villain') {
           continue;
         }
         if (usedBlock.has(b.id)) {
@@ -2277,12 +2287,12 @@
         beep(175, 0.028);
         continue;
       }
-      if (b.kind === 'beam') {
+      if (isMetalKind(b.kind)) {
         const cn = contactNormalForRect(p, b, er);
         p.x += cn.nx * (cn.pen + 0.2) * 0.58;
         p.y += cn.ny * (cn.pen + 0.2) * 0.58;
         const vn = p.vx * cn.nx + p.vy * cn.ny;
-        const bumpOnce = p._beamVelBump || null;
+        const bumpOnce = p._metalVelBump || null;
         if (!bumpOnce || !bumpOnce.has(b.id)) {
           if (bumpOnce) {
             bumpOnce.add(b.id);
@@ -2319,7 +2329,7 @@
         beep(130, 0.04);
         continue;
       }
-      if (b.kind === 'beam' || b.kind === 'lava' || b.kind === 'vine') {
+      if (isMetalKind(b.kind) || b.kind === 'lava' || b.kind === 'vine') {
         continue;
       }
       let dmg = pr.dmg || 1;
@@ -2454,7 +2464,7 @@
     }
     const p = projectile;
     p._dmgOnce = new Set();
-    p._beamVelBump = new Set();
+    p._metalVelBump = new Set();
     const er = projectileRadiusWorld();
     const gStep = (GRAVITY * dt * 60) / 1;
     const moveScale = dt * 60;
@@ -2504,18 +2514,18 @@
     }
   }
 
-  function drawBeam(b) {
+  function drawMetal(b) {
     const g = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y + b.h);
-    g.addColorStop(0, '#6b4a2a');
-    g.addColorStop(0.45, '#a67c52');
-    g.addColorStop(0.55, '#8f6a44');
-    g.addColorStop(1, '#4a321c');
+    g.addColorStop(0, '#7a8794');
+    g.addColorStop(0.4, '#c8d4e0');
+    g.addColorStop(0.55, '#aebdcf');
+    g.addColorStop(1, '#4e5866');
     ctx.fillStyle = g;
     ctx.fillRect(b.x, b.y, b.w, b.h);
-    ctx.strokeStyle = 'rgba(40, 24, 12, 0.55)';
+    ctx.strokeStyle = 'rgba(30, 36, 44, 0.65)';
     ctx.lineWidth = Math.max(1.5, (2 * WORLD_W) / REF_WORLD_W);
     ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
     ctx.lineWidth = 1;
     if (b.w >= b.h) {
       const mid = b.y + b.h / 2;
@@ -2530,7 +2540,7 @@
       ctx.lineTo(mid, b.y + b.h - 4);
       ctx.stroke();
     }
-    ctx.fillStyle = 'rgba(60, 45, 30, 0.35)';
+    ctx.fillStyle = 'rgba(40, 48, 58, 0.35)';
     ctx.fillRect(b.x + 2, b.y + 2, Math.min(8, b.w * 0.15), Math.min(8, b.h * 0.35));
     ctx.fillRect(b.x + b.w - 10, b.y + b.h - 10, 8, 8);
   }
@@ -2590,10 +2600,15 @@
   }
 
   function drawTowers() {
-    for (const b of towers) {
-      if (b.hp <= 0) {
-        continue;
+    const alive = [];
+    for (let i = 0; i < towers.length; i++) {
+      if (towers[i].hp > 0) {
+        alive.push(towers[i]);
       }
+    }
+    const nonVillain = alive.filter((b) => b.kind !== 'villain');
+    const villains = alive.filter((b) => b.kind === 'villain');
+    function drawOneTower(b) {
       if (b.kind === 'villain') {
         ctx.fillStyle = 'rgba(60, 40, 50, 0.35)';
         ctx.fillRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
@@ -2607,14 +2622,17 @@
         ctx.strokeStyle = 'rgba(255, 220, 120, 0.75)';
         ctx.lineWidth = Math.max(2, (2.5 * WORLD_W) / REF_WORLD_W);
         ctx.strokeRect(b.x, b.y, b.w, b.h);
-        continue;
-      } else if (b.kind === 'vine') {
+        return;
+      }
+      if (b.kind === 'vine') {
         drawVine(b);
-        continue;
-      } else if (b.kind === 'beam') {
-        drawBeam(b);
-        continue;
-      } else if (b.kind === 'stone') {
+        return;
+      }
+      if (isMetalKind(b.kind)) {
+        drawMetal(b);
+        return;
+      }
+      if (b.kind === 'stone') {
         ctx.fillStyle = '#7a8a9a';
       } else {
         ctx.fillStyle = '#b8956a';
@@ -2629,6 +2647,12 @@
         ctx.textBaseline = 'middle';
         ctx.fillText(b.emoji, b.x + b.w / 2, b.y + b.h / 2 + 2);
       }
+    }
+    for (let i = 0; i < nonVillain.length; i++) {
+      drawOneTower(nonVillain[i]);
+    }
+    for (let j = 0; j < villains.length; j++) {
+      drawOneTower(villains[j]);
     }
   }
 
