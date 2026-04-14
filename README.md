@@ -8,34 +8,62 @@ FastAPI app that serves a small **MQTT Arcade** dashboard plus static HTML clien
 |--------|-----|-----|
 | Tetris | `/tetris/man.html` (spawn right) | `/tetris/boy.html` (spawn left) |
 | Pong   | `/pong/man.html` (host, left paddle) | `/pong/boy.html` (right paddle) |
-| Emoji Lobber | `/lobber/man.html` (single-player) | — (`/lobber/boy.html` redirects to man) |
+| Emoji Lobber | `/lobber/game.html` (single-player) | — |
 
 **Emoji Lobber** — Single-player Angry Birds–style pull & release, spinning projectile, destructible **wood** / **stone** + **villain emoji** targets, **lava** (shot ends on touch), **pyramid** layouts on harder stages, per-hero powers (human-face picker). **15 levels** (Easy → Impossible); pick any stage before locking in. No MQTT or network. Optional **`?debug=1`** for verbose console logs.
 
-MQTT player ids in topics are **`Man`** and **`Boy`**. Old URLs **`/tetris/dad.html`**, **`/tetris/adrien.html`**, **`/pong/dad.html`**, **`/pong/adrien.html`** redirect (307) to the new pages.
+## Emoji Lobber Single-URL Note (Coolmath prep)
 
-Dashboard: **`/`** (explicit HTML route so the root is never a JSON stub). Aliases: **`/dashboard`** and **`/home`** → redirect to **`/`**. Topic roots: `tetris/bens_arcade/...`, `pong/bens_arcade/...`
+- Canonical Lobber URL is **only** `/lobber/game.html`.
+- Lobber `man.html` and `boy.html` files/references are intentionally removed for single-player packaging.
+- Keep `/lobber/index.html` as the landing/info page and `/lobber/game.html` as the playable build.
+- When preparing the Coolmath package, include the Lobber runtime files under `static/lobber/` (`game.html`, `index.html`, `lobber.js`, `lobber.css`) plus any assets they reference.
 
-If you still see `{"message":"Hello World — WebSocket Pong Server is running!"}` on [Render](https://bensunitywebsocketserver.onrender.com/), the service is running an **older deploy** — push this repo and wait for the build to finish (or trigger a manual deploy).
+## Local install and run
 
-## Local (Windows / macOS / Linux)
-
-```powershell
-cd bensUnityWebSocketServer
-pip install -r requirements.txt
-uvicorn app:app --host 0.0.0.0 --port 8000 --http h11
-```
-
-Open `http://127.0.0.1:8000/` and pick a game. Use two browser tabs (or machines) for Man + Boy.
-
-## Render
+### 1) Install Python deps
 
 ```bash
-uvicorn app:app --host 0.0.0.0 --port $PORT --http h11
+python -m pip install -r requirements.txt
 ```
 
-Health check: `GET /health`
+If `requirements.txt` is not present, install the minimum manually:
 
-## Original Tetris lab
+```bash
+python -m pip install fastapi uvicorn playwright
+python -m playwright install chromium
+```
 
-The Tetris client logic was ported from `webapp-pen-test-playground/mqtt_tetris` with the broker fixed to the public Mosquitto WebSocket endpoint for simple hosting without a local broker.
+### 2) Serve locally with FastAPI (`app.py`)
+
+```bash
+uvicorn app:app --host 127.0.0.1 --port 8000 --http h11
+```
+
+Open:
+
+- Dashboard: `http://127.0.0.1:8000/`
+- Emoji Lobber game: `http://127.0.0.1:8000/lobber/game.html`
+- Emoji Lobber landing: `http://127.0.0.1:8000/lobber/index.html`
+
+Health check:
+
+- `http://127.0.0.1:8000/health` should return `{"status":"ok"}`
+
+## Local verification scripts
+
+Run both checks against your local server:
+
+```bash
+python scripts/check_served_html.py http://127.0.0.1:8000
+python scripts/check_browser_console.py http://127.0.0.1:8000
+```
+
+What to look for:
+
+- Pass condition: each script ends with `VERIFICATION: PASSED - no errors...`
+- `check_served_html.py` validates page HTML shell + local asset URL resolution.
+- `check_browser_console.py` validates runtime console/page errors and includes a Lobber functional smoke flow.
+- Pong may show AudioContext autoplay warnings; those are reported as warnings-only and are non-fatal.
+
+

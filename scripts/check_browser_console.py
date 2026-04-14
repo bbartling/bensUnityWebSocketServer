@@ -18,13 +18,76 @@ BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 
 PAGES = [
     "/",
-    "/lobber/man.html",
-    "/lobber/boy.html",
+    "/lobber/game.html",
+    "/lobber/index.html",
     "/tetris/man.html",
     "/tetris/boy.html",
     "/pong/man.html",
     "/pong/boy.html",
 ]
+
+
+def run_lobber_functional_smoke(page) -> list[str]:
+    """Return a list of functional failures (empty list means pass)."""
+    fails: list[str] = []
+    try:
+        canvas = page.locator("#gameCanvas")
+        picker = page.locator("#emojiPicker")
+        grid_buttons = page.locator("#emojiGrid button")
+        lock_btn = page.locator("#lockEmoji")
+        open_builder_game_blank = page.locator("#openLevelBuilderGameBlank")
+
+        if canvas.count() != 1:
+            fails.append("missing #gameCanvas")
+            return fails
+        if picker.count() != 1 or not picker.is_visible():
+            fails.append("emoji picker not visible on load")
+            return fails
+        if grid_buttons.count() < 1:
+            fails.append("no hero buttons in #emojiGrid")
+            return fails
+        if lock_btn.count() != 1:
+            fails.append("missing #lockEmoji")
+            return fails
+
+        # Select hero + lock in, confirm picker hides and gameplay begins.
+        grid_buttons.first.click(timeout=4000)
+        lock_btn.click(timeout=4000)
+        page.wait_for_timeout(300)
+        if picker.is_visible():
+            fails.append("picker still visible after lock-in")
+
+        # Open builder from in-game button (picker button is hidden after lock-in).
+        if open_builder_game_blank.count() != 1:
+            fails.append("missing #openLevelBuilderGameBlank")
+            return fails
+        open_builder_game_blank.click(timeout=4000)
+        page.wait_for_timeout(400)
+
+        panel = page.locator("#lobberBuilderPanel")
+        play_btn = page.locator("#lobberBuilderPlay")
+        blank_btn = page.locator("#lobberBuilderBlank")
+        turn_line = page.locator("#turnLine")
+        if panel.count() != 1 or not panel.is_visible():
+            fails.append("builder panel failed to open")
+            return fails
+        if blank_btn.count() != 1:
+            fails.append("missing #lobberBuilderBlank")
+            return fails
+
+        blank_btn.click(timeout=4000)
+        page.wait_for_timeout(250)
+        if play_btn.count() != 1:
+            fails.append("missing #lobberBuilderPlay")
+            return fails
+        play_btn.click(timeout=4000)
+        page.wait_for_timeout(300)
+        txt = turn_line.inner_text(timeout=4000).lower()
+        if "at least 1 villain" not in txt:
+            fails.append("missing no-villain play-test gate message")
+    except Exception as e:
+        fails.append(f"functional smoke exception: {e}")
+    return fails
 
 
 def main() -> int:
@@ -80,6 +143,14 @@ def main() -> int:
                     print(f"  {e}")
             errs = [x for x in logs if x[0] == "error"]
             warns = [x for x in logs if x[0] == "warning"]
+            if path == "/lobber/game.html":
+                func_fails = run_lobber_functional_smoke(page)
+                if func_fails:
+                    exit_code = 1
+                    n_fail += 1
+                    print(f"FUNCTIONAL.fail {path}:")
+                    for f in func_fails:
+                        print(f"  {f}")
             if errs:
                 exit_code = 1
                 if not page_errors:

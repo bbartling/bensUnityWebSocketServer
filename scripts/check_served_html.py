@@ -18,8 +18,7 @@ import urllib.request
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8877"
 
 PAGES = [
-    "/lobber/man.html",
-    "/lobber/boy.html",
+    "/lobber/game.html",
     "/lobber/index.html",
     "/tetris/man.html",
     "/tetris/boy.html",
@@ -31,6 +30,10 @@ PAGES = [
 ]
 
 ATTR_RE = re.compile(r"""(?:href|src)=["']([^"']+)["']""", re.I)
+
+LOBBER_REQUIRED_SNIPPETS: dict[str, tuple[str, ...]] = {
+    "/lobber/game.html": ("id=\"gameCanvas\"", "id=\"emojiPicker\"", "/lobber/lobber.js", "id=\"openLevelBuilderPicker\""),
+}
 
 
 def fetch(url: str) -> str:
@@ -71,6 +74,11 @@ def main() -> int:
                 issues.append((path, "missing <html"))
             if "</html>" not in low:
                 issues.append((path, "missing </html>"))
+            req = LOBBER_REQUIRED_SNIPPETS.get(path)
+            if req:
+                for snip in req:
+                    if snip.lower() not in low:
+                        issues.append((path, f"missing required snippet {snip!r}"))
             base_dir = path.rsplit("/", 1)[0] if "/" in path.strip("/") else ""
             for m in ATTR_RE.findall(body):
                 if m.startswith(("http://", "https://", "mailto:", "data:", "#")):

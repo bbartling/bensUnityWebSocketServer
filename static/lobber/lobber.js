@@ -36,7 +36,11 @@
   let buildTool = 'wood';
   let buildGridSnap = true;
   let buildDragPiece = null;
+  let buildDragPieceStart = null;
+  let buildDragPieceUndoSnap = '';
   let buildDragSling = false;
+  let buildDragSlingStart = null;
+  let buildDragSlingUndoSnap = '';
   let builderTestSnapshot = null;
   let buildCarryKind = null;
   let buildVillainEmoji = '🐷';
@@ -622,7 +626,11 @@
     return typeof n === 'number' && n > 0 ? n : 0;
   }
 
-  const BUILD_GRID = 8;
+  const BUILD_TILE = 32;
+  const BUILD_GRID = BUILD_TILE;
+  const BUILDER_UNDO_LIMIT = 50;
+  let builderUndoStack = [];
+  let builderHistorySuspended = false;
 
   function hideBuilderPanel() {
     const p = document.getElementById('lobberBuilderPanel');
@@ -736,10 +744,67 @@
     const padX = 36;
     const padTop = 64;
     const padBot = 48;
+    if (useCustomLevel) {
+      const minY = Math.max(padTop, WORLD_H * 0.8);
+      return {
+        x: Math.max(padX, Math.min(WORLD_W * 0.25, s.x)),
+        y: Math.max(minY, Math.min(GROUND_Y - padBot, s.y)),
+      };
+    }
     return {
       x: Math.max(padX, Math.min(WORLD_W * 0.42, s.x)),
       y: Math.max(padTop, Math.min(GROUND_Y - padBot, s.y)),
     };
+  }
+
+  function aliveVillainCount() {
+    let n = 0;
+    for (const b of towers) {
+      if (b.hp > 0 && b.kind === 'villain') {
+        n += 1;
+      }
+    }
+    return n;
+  }
+
+  function slingOverlapsAnyPiece(sx, sy) {
+    const r = Math.max(18, projectileRadiusWorld() * 1.2);
+    for (const b of towers) {
+      if (b.hp <= 0) {
+        continue;
+      }
+      if (circleRectHit(sx, sy, r, b)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function placeSlingInValidZone(desired) {
+    const base = clampSling(desired);
+    if (!useCustomLevel || !slingOverlapsAnyPiece(base.x, base.y)) {
+      return base;
+    }
+    const step = BUILD_GRID;
+    const yMin = Math.max(64, WORLD_H * 0.8);
+    const xMin = 36;
+    const xMax = WORLD_W * 0.25;
+    const yMax = GROUND_Y - 48;
+    let best = null;
+    let bestD = 1e18;
+    for (let y = yMin; y <= yMax; y += step) {
+      for (let x = xMin; x <= xMax; x += step) {
+        if (slingOverlapsAnyPiece(x, y)) {
+          continue;
+        }
+        const d = (x - base.x) * (x - base.x) + (y - base.y) * (y - base.y);
+        if (d < bestD) {
+          bestD = d;
+          best = { x, y };
+        }
+      }
+    }
+    return best || base;
   }
 
   function allocBuilderId() {
@@ -793,15 +858,78 @@
     builderNextId = Math.max(20000, mx + 1);
   }
 
+  function canCaptureBuilderHistory() {
+    return useCustomLevel && editorMode === 'edit' && !builderHistorySuspended;
+  }
+
+  function pushBuilderUndo(label) {
+    if (!canCaptureBuilderHistory()) {
+      return;
+    }
+    builderUndoStack.push({ label: label || 'edit', snap: snapshotCustomLevel() });
+    if (builderUndoStack.length > BUILDER_UNDO_LIMIT) {
+      builderUndoStack.shift();
+    }
+    syncBuilderUndoUi();
+  }
+
+  function pushBuilderUndoSnapshot(label, snap) {
+    if (!canCaptureBuilderHistory() || !snap) {
+      return;
+    }
+    builderUndoStack.push({ label: label || 'edit', snap });
+    if (builderUndoStack.length > BUILDER_UNDO_LIMIT) {
+      builderUndoStack.shift();
+    }
+    syncBuilderUndoUi();
+  }
+
+  function syncBuilderUndoUi() {
+    const undoBtn = document.getElementById('lobberBuilderUndo');
+    if (!undoBtn) {
+      return;
+    }
+    undoBtn.disabled = !(editorMode === 'edit' && builderUndoStack.length > 0);
+    undoBtn.title =
+      builderUndoStack.length > 0
+        ? `Undo ${builderUndoStack[builderUndoStack.length - 1].label || 'edit'}`
+        : 'Nothing to undo';
+  }
+
+  function undoBuilderAction() {
+    if (editorMode !== 'edit' || builderUndoStack.length < 1) {
+      return;
+    }
+    const prev = builderUndoStack.pop();
+    if (!prev || !prev.snap) {
+      syncBuilderUndoUi();
+      return;
+    }
+    builderHistorySuspended = true;
+    const ok = restoreFromSnapshot(prev.snap);
+    builderHistorySuspended = false;
+    if (ok) {
+      phase = 'build';
+      dragging = false;
+      projectile = null;
+      showBuilderPanel();
+      document.body.classList.remove('lobber-playtest');
+      hidePlaytestHud();
+      syncBuilderForm();
+      refreshGameInfo();
+    }
+    syncBuilderUndoUi();
+  }
+
   function applyCustomWorld(w, h, sling, tw) {
     WORLD_W = Math.max(640, Math.min(2200, w | 0));
     WORLD_H = Math.max(480, Math.min(800, h | 0));
     GROUND_Y = Math.floor(WORLD_H * (458 / REF_WORLD_H));
-    SLING = clampSling({ x: sling.x, y: sling.y });
     towers = cloneTowers(tw);
     if (useCustomLevel) {
       mergeMorphableKinds();
     }
+    SLING = placeSlingInValidZone({ x: sling.x, y: sling.y });
     syncBuilderNextIdFromTowers();
     dragCur = { x: SLING.x, y: SLING.y };
     projectile = null;
@@ -1032,6 +1160,7 @@
     if (buildTool === 'erase') {
       const hit = hitTowerAt(wx, wy);
       if (hit) {
+        pushBuilderUndo('erase piece');
         towers = towers.filter((t) => t.id !== hit.id);
       }
       return;
@@ -1041,19 +1170,19 @@
     }
     let piece = null;
     if (buildTool === 'wood') {
-      piece = tower(allocBuilderId(), x, y, 48, 52, 2, 'wood', 80, '');
+      piece = tower(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE, 2, 'wood', 80, '');
     } else if (buildTool === 'stone') {
-      piece = tower(allocBuilderId(), x, y, 44, 44, 4, 'stone', 140, '');
+      piece = tower(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE, 4, 'stone', 140, '');
     } else if (buildTool === 'lava') {
-      piece = lavaBar(allocBuilderId(), x, y, 120, 12);
+      piece = lavaBar(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE);
     } else if (buildTool === 'villain') {
-      piece = tower(allocBuilderId(), x, y, 48, 48, 1, 'villain', 400, buildVillainEmoji);
+      piece = tower(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE, 1, 'villain', 400, buildVillainEmoji);
     } else if (buildTool === 'vine') {
-      piece = vineHang(allocBuilderId(), x, y, 14, 140);
+      piece = vineHang(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE);
     } else if (buildTool === 'beamH') {
-      piece = beamPlank(allocBuilderId(), x, y, 112, 14);
+      piece = beamPlank(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE);
     } else if (buildTool === 'beamV') {
-      piece = beamPlank(allocBuilderId(), x, y, 14, 112);
+      piece = beamPlank(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE);
     }
     if (
       piece &&
@@ -1062,6 +1191,7 @@
       piece.x + piece.w <= WORLD_W - 6 &&
       piece.y + piece.h <= WORLD_H - 8
     ) {
+      pushBuilderUndo(`place ${buildTool}`);
       towers.push(piece);
       mergeMorphableKinds();
     }
@@ -1074,6 +1204,7 @@
     useCustomLevel = true;
     editorMode = 'edit';
     builderTestSnapshot = null;
+    builderUndoStack = [];
     pickOverlay.classList.add('hidden');
     canvas.classList.remove('lobber-wait');
     if (!builderReturnToPicker) {
@@ -1105,6 +1236,7 @@
     setTurnLine();
     refreshGameInfo();
     syncBuilderForm();
+    syncBuilderUndoUi();
   }
 
   function exitLevelBuilder() {
@@ -1133,6 +1265,10 @@
       return;
     }
     mergeMorphableKinds();
+    if (aliveVillainCount() < 1) {
+      turnLine.textContent = 'Add at least 1 villain before Play test.';
+      return;
+    }
     builderTestSnapshot = snapshotCustomLevel();
     resetCourseHp();
     score = 0;
@@ -1210,6 +1346,7 @@
     }
     syncPlayStopButtons();
     syncBuildToolButtons();
+    syncBuilderUndoUi();
   }
 
   function syncPlayStopButtons() {
@@ -1241,12 +1378,16 @@
     if (buildTool === 'sling') {
       if (Math.hypot(wx - SLING.x, wy - SLING.y) < Math.max(56, projectileRadiusWorld() * 3.2)) {
         buildDragSling = true;
+        buildDragSlingStart = { x: SLING.x, y: SLING.y };
+        buildDragSlingUndoSnap = canCaptureBuilderHistory() ? snapshotCustomLevel() : '';
       }
       return;
     }
     if (buildTool === 'move') {
       const hit = hitTowerAt(wx, wy);
       if (hit) {
+        buildDragPieceStart = { x: hit.x, y: hit.y };
+        buildDragPieceUndoSnap = canCaptureBuilderHistory() ? snapshotCustomLevel() : '';
         buildDragPiece = { id: hit.id, ox: wx - hit.x, oy: wy - hit.y };
       }
       return;
@@ -1263,8 +1404,11 @@
       return;
     }
     if (buildDragSling) {
-      SLING = clampSling({ x: wx, y: wy });
-      dragCur = { x: SLING.x, y: SLING.y };
+      const nextSling = placeSlingInValidZone({ x: wx, y: wy });
+      if (!slingOverlapsAnyPiece(nextSling.x, nextSling.y)) {
+        SLING = nextSling;
+        dragCur = { x: SLING.x, y: SLING.y };
+      }
       return;
     }
     if (buildDragPiece) {
@@ -1281,9 +1425,28 @@
   }
 
   function builderPointerUp() {
+    const hadSlingDrag = !!buildDragSling;
     const hadPieceDrag = !!buildDragPiece;
+    if (editorMode === 'edit' && hadPieceDrag) {
+      const b = towers.find((t) => t.id === buildDragPiece.id);
+      if (b && buildDragPieceStart && (b.x !== buildDragPieceStart.x || b.y !== buildDragPieceStart.y)) {
+        pushBuilderUndoSnapshot('move piece', buildDragPieceUndoSnap);
+      }
+    }
+    if (
+      editorMode === 'edit' &&
+      hadSlingDrag &&
+      buildDragSlingStart &&
+      (SLING.x !== buildDragSlingStart.x || SLING.y !== buildDragSlingStart.y)
+    ) {
+      pushBuilderUndoSnapshot('move slingshot', buildDragSlingUndoSnap);
+    }
     buildDragPiece = null;
+    buildDragPieceStart = null;
+    buildDragPieceUndoSnap = '';
     buildDragSling = false;
+    buildDragSlingStart = null;
+    buildDragSlingUndoSnap = '';
     if (editorMode === 'edit' && hadPieceDrag) {
       mergeMorphableKinds();
     }
@@ -1293,6 +1456,7 @@
     if (editorMode !== 'edit') {
       return;
     }
+    pushBuilderUndo('world resize');
     const map = {
       '960x540': [960, 540],
       '1280x560': [1280, 560],
@@ -1310,6 +1474,7 @@
     if (editorMode !== 'edit') {
       return;
     }
+    pushBuilderUndo('new blank');
     const w = 1280;
     const h = 560;
     const gy = Math.floor(h * (458 / REF_WORLD_H));
@@ -1322,6 +1487,7 @@
     if (editorMode !== 'edit') {
       return;
     }
+    pushBuilderUndo('copy stage');
     const L = LEVELS[selectedLevelIndex] || LEVELS[0];
     const base = levelGroundY(L);
     const tw = cloneTowers(L.towers(base));
@@ -1363,7 +1529,7 @@
       '<label class="lobber-builder-check"><input type="checkbox" id="lobberBuilderSnap" checked /> Snap grid</label>',
       '</div>',
       '<div class="lobber-builder-tools">',
-      '<span class="lobber-builder-hint">Tools — click to stamp · Same-kind pieces (beams, lava, vines, wood, stone, villain) chain-merge on load / export / play — Erase clears the whole morph</span>',
+      '<span class="lobber-builder-hint">Mario-style builder: one-tile pieces on a shared grid · Same-kind touching pieces merge · Erase clears a merged piece</span>',
       '<button type="button" class="lobber-tool" data-build-tool="wood">Wood</button>',
       '<button type="button" class="lobber-tool" data-build-tool="stone">Stone</button>',
       '<button type="button" class="lobber-tool" data-build-tool="lava">Lava</button>',
@@ -1380,7 +1546,8 @@
       '<button type="button" id="lobberBuilderCloneStage">Copy selected stage</button>',
       '<button type="button" id="lobberBuilderPlay" class="lobber-builder-play-primary">Play test</button>',
       '<button type="button" id="lobberBuilderStop" disabled>Stop test</button>',
-      '<button type="button" id="lobberBuilderExport">Save JSON</button>',
+      '<button type="button" id="lobberBuilderUndo" disabled>Undo</button>',
+      '<button type="button" id="lobberBuilderExport">Save Game</button>',
       '<label class="lobber-builder-file">Load <input type="file" id="lobberBuilderFile" accept=".json,application/json" style="display:none" /></label>',
       '<button type="button" id="lobberBuilderExit">Exit builder</button>',
       '</div>',
@@ -1398,6 +1565,7 @@
     document.getElementById('lobberBuilderCloneStage').addEventListener('click', reloadBuilderFromSelectedStage);
     document.getElementById('lobberBuilderPlay').addEventListener('click', playTestCustom);
     document.getElementById('lobberBuilderStop').addEventListener('click', stopTestCustom);
+    document.getElementById('lobberBuilderUndo').addEventListener('click', undoBuilderAction);
     document.getElementById('lobberBuilderExport').addEventListener('click', exportCustomJson);
     document.getElementById('lobberBuilderExit').addEventListener('click', exitLevelBuilder);
     document.getElementById('lobberBuilderName').addEventListener('input', (e) => {
@@ -1424,7 +1592,9 @@
       }
       const r = new FileReader();
       r.onload = () => {
+        const before = canCaptureBuilderHistory() ? snapshotCustomLevel() : '';
         if (importCustomJson(String(r.result || ''))) {
+          pushBuilderUndoSnapshot('import level', before);
           document.body.classList.remove('lobber-playtest');
           hidePlaytestHud();
           editorMode = 'edit';
@@ -1482,13 +1652,14 @@
       wb > 0
         ? ` <span style="opacity:0.78">· Ricochet: bank off wood/stone (${wb}+) before villains take damage.</span>`
         : '';
+    const obj = useCustomLevel ? ' <span style="opacity:0.82">· Objective: clear all villains.</span>' : '';
     const edit =
       editorMode === 'edit'
         ? ` <span style="opacity:0.85">· <strong>Level builder</strong> — place parts, move slingshot, then Play test.</span>`
         : editorMode === 'test'
           ? ` <span style="opacity:0.85">· <strong>Play test</strong> — Stop test to keep editing.</span>`
           : '';
-    el.innerHTML = `${tier}<span class="highlight">${L.name}</span> <span style="opacity:0.75">(${WORLD_W}×${WORLD_H})</span>${ric}${edit}`;
+    el.innerHTML = `${tier}<span class="highlight">${L.name}</span> <span style="opacity:0.75">(${WORLD_W}×${WORLD_H})</span>${ric}${obj}${edit}`;
   }
 
   let currentLevelIndex = 0;
@@ -1593,7 +1764,7 @@
     const wrap = document.getElementById('boardWrap');
     const maxW = Math.max(240, (wrap && wrap.clientWidth) || CANVAS_W);
     const maxH = Math.max(200, (wrap && wrap.clientHeight) || CANVAS_H);
-    const s = Math.min(maxW / CANVAS_W, maxH / CANVAS_H, 1);
+    const s = Math.min(maxW / CANVAS_W, maxH / CANVAS_H);
     canvas.style.width = `${Math.floor(CANVAS_W * s)}px`;
     canvas.style.height = `${Math.floor(CANVAS_H * s)}px`;
     canvas.width = CANVAS_W;
@@ -1807,6 +1978,10 @@
     projectile = null;
     phase = 'aim';
     shooterThisRound = null;
+    if (aliveVillainCount() === 0) {
+      turnLine.textContent = 'All villains cleared! Level complete.';
+      return;
+    }
     setTurnLine();
   }
 
@@ -1961,15 +2136,10 @@
         return;
       }
       if (b.kind === 'vine') {
-        const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
-        const ny = Math.max(b.y, Math.min(p.y, b.y + b.h));
-        let dx = p.x - nx;
-        let dy = p.y - ny;
-        const d = Math.hypot(dx, dy) || 0.001;
         const er = projectileRadiusWorld();
-        const pen = er - d;
-        p.x += (dx / d) * pen * 0.5;
-        p.y += (dy / d) * pen * 0.5;
+        const cn = contactNormalForRect(p, b, er);
+        p.x += cn.nx * cn.pen * 0.5;
+        p.y += cn.ny * cn.pen * 0.5;
         p.vx *= 0.16;
         p.vy = p.vy * 0.2 + 0.14;
         p.spin = (p.spin || 0) * 0.88;
@@ -1978,18 +2148,11 @@
         continue;
       }
       if (b.kind === 'beam') {
-        const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
-        const ny = Math.max(b.y, Math.min(p.y, b.y + b.h));
-        let dx = p.x - nx;
-        let dy = p.y - ny;
-        const d = Math.hypot(dx, dy) || 0.001;
         const er = projectileRadiusWorld();
-        const pen = er - d;
-        p.x += (dx / d) * pen * 0.58;
-        p.y += (dy / d) * pen * 0.58;
-        dx /= d;
-        dy /= d;
-        const vn = p.vx * dx + p.vy * dy;
+        const cn = contactNormalForRect(p, b, er);
+        p.x += cn.nx * (cn.pen + 0.18) * 0.58;
+        p.y += cn.ny * (cn.pen + 0.18) * 0.58;
+        const vn = p.vx * cn.nx + p.vy * cn.ny;
         const bumpOnce = p._beamVelBump || null;
         if (!bumpOnce || !bumpOnce.has(b.id)) {
           if (bumpOnce) {
@@ -2000,8 +2163,8 @@
             p.structureBounces = (p.structureBounces || 0) + 1;
           }
           if (vn < 0) {
-            p.vx -= 2 * vn * dx * bmPin;
-            p.vy -= 2 * vn * dy * bmPin;
+            p.vx -= 2 * vn * cn.nx * bmPin;
+            p.vy -= 2 * vn * cn.ny * bmPin;
           }
           const sp = p.spin || SPIN_BASE;
           p.spin = sp * 1.05 + (Math.random() - 0.5) * 3.5;
@@ -2009,25 +2172,18 @@
         }
         continue;
       }
-      const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
-      const ny = Math.max(b.y, Math.min(p.y, b.y + b.h));
-      let dx = p.x - nx;
-      let dy = p.y - ny;
-      const d = Math.hypot(dx, dy) || 0.001;
       const er = projectileRadiusWorld();
-      const pen = er - d;
-      p.x += (dx / d) * pen * 0.55;
-      p.y += (dy / d) * pen * 0.55;
-      dx /= d;
-      dy /= d;
-      const vn = p.vx * dx + p.vy * dy;
+      const cn = contactNormalForRect(p, b, er);
+      p.x += cn.nx * (cn.pen + 0.14) * 0.55;
+      p.y += cn.ny * (cn.pen + 0.14) * 0.55;
+      const vn = p.vx * cn.nx + p.vy * cn.ny;
       const bm = (pr.bounceMul || 1) * BOUNCE_DAMP;
       if (vn < -0.28 && (b.kind === 'wood' || b.kind === 'stone')) {
         p.structureBounces = (p.structureBounces || 0) + 1;
       }
       if (vn < 0) {
-        p.vx -= 2 * vn * dx * bm;
-        p.vy -= 2 * vn * dy * bm;
+        p.vx -= 2 * vn * cn.nx * bm;
+        p.vy -= 2 * vn * cn.ny * bm;
       }
       const needRic = wallBouncesRequired();
       const villainArmored = b.kind === 'villain' && needRic > 0 && (p.structureBounces || 0) < needRic;
@@ -2073,6 +2229,32 @@
         debris.splice(i, 1);
       }
     }
+  }
+
+  function contactNormalForRect(p, b, er) {
+    const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
+    const ny = Math.max(b.y, Math.min(p.y, b.y + b.h));
+    let dx = p.x - nx;
+    let dy = p.y - ny;
+    let d = Math.hypot(dx, dy);
+    if (d > 1e-6) {
+      return { nx: dx / d, ny: dy / d, pen: Math.max(0, er - d) };
+    }
+    const left = Math.abs(p.x - b.x);
+    const right = Math.abs(b.x + b.w - p.x);
+    const top = Math.abs(p.y - b.y);
+    const bot = Math.abs(b.y + b.h - p.y);
+    const minEdge = Math.min(left, right, top, bot);
+    if (minEdge === left) {
+      return { nx: -1, ny: 0, pen: er + left };
+    }
+    if (minEdge === right) {
+      return { nx: 1, ny: 0, pen: er + right };
+    }
+    if (minEdge === top) {
+      return { nx: 0, ny: -1, pen: er + top };
+    }
+    return { nx: 0, ny: 1, pen: er + bot };
   }
 
   function projectileOverlapsAnyVine(p) {
@@ -2577,6 +2759,17 @@
       builderPointerUp();
     }
     endDrag();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (editorMode !== 'edit') {
+      return;
+    }
+    const k = (e.key || '').toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && k === 'z' && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      undoBuilderAction();
+    }
   });
 
   const openPicker = document.getElementById('openLevelBuilderPicker');
