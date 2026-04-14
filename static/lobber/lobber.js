@@ -1243,7 +1243,9 @@
       return;
     }
     let piece = null;
-    if (buildTool === 'wood') {
+    if (buildTool === 'metal') {
+      piece = metalRail(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE);
+    } else if (buildTool === 'wood') {
       piece = tower(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE, 2, 'wood', 80, '');
     } else if (buildTool === 'stone') {
       piece = tower(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE, 4, 'stone', 140, '');
@@ -1253,8 +1255,6 @@
       piece = tower(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE, 1, 'villain', 400, buildVillainEmoji);
     } else if (buildTool === 'vine') {
       piece = vineHang(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE);
-    } else if (buildTool === 'metal') {
-      piece = metalRail(allocBuilderId(), x, y, BUILD_TILE, BUILD_TILE);
     }
     if (
       piece &&
@@ -1622,11 +1622,11 @@
       '</div>',
       '<div class="lobber-builder-tools">',
       '<span class="lobber-builder-hint">Mario-style builder: one-tile pieces on a shared grid · No-build over launcher (corner zone + sling pocket) · Metal is indestructible in play · Same-kind tiles merge only when touching (Play test) · Erase clears a merged piece</span>',
+      '<button type="button" class="lobber-tool" data-build-tool="metal" title="Solid metal — indestructible, bouncy">Metal</button>',
       '<button type="button" class="lobber-tool" data-build-tool="wood">Wood</button>',
       '<button type="button" class="lobber-tool" data-build-tool="stone">Stone</button>',
-      '<button type="button" class="lobber-tool" data-build-tool="lava">Lava</button>',
+      '<button type="button" class="lobber-tool" data-build-tool="lava" title="Touching lava ends the shot">Lava</button>',
       '<button type="button" class="lobber-tool" data-build-tool="vine" title="Hanging vine — slows and traps the shot">Vine</button>',
-      '<button type="button" class="lobber-tool" data-build-tool="metal" title="Solid metal — indestructible, bouncy">Metal</button>',
       '<button type="button" class="lobber-tool" data-build-tool="villain">Villain</button>',
       '<button type="button" class="lobber-tool" data-build-tool="move">Move</button>',
       '<button type="button" class="lobber-tool" data-build-tool="sling">Slingshot</button>',
@@ -2301,9 +2301,16 @@
           if (vn < -0.22) {
             p.structureBounces = (p.structureBounces || 0) + 1;
           }
-          if (vn < 0) {
+          if (vn < -0.06) {
             p.vx -= 2 * vn * cn.nx * bmPin;
             p.vy -= 2 * vn * cn.ny * bmPin;
+          } else if (Math.abs(vn) < 0.32 && cn.pen > 0.035) {
+            const tx = -cn.ny;
+            const ty = cn.nx;
+            const sgn = p.vx * tx + p.vy * ty >= 0 ? 1 : -1;
+            const roll = 1.05 * bmPin;
+            p.vx += tx * sgn * roll;
+            p.vy += ty * sgn * roll * 0.72;
           }
           const sp = p.spin || SPIN_BASE;
           p.spin = sp * 1.05 + (Math.random() - 0.5) * 3.5;
@@ -2322,6 +2329,12 @@
       if (vn < 0) {
         p.vx -= 2 * vn * cn.nx * bm;
         p.vy -= 2 * vn * cn.ny * bm;
+      } else if (Math.abs(vn) < 0.34 && (b.kind === 'wood' || b.kind === 'stone') && cn.pen > 0.03) {
+        const tx = -cn.ny;
+        const ty = cn.nx;
+        const sgn = p.vx * tx + p.vy * ty >= 0 ? 1 : -1;
+        p.vx += tx * sgn * 0.88 * bm;
+        p.vy += ty * sgn * 0.62 * bm;
       }
       const needRic = wallBouncesRequired();
       const villainArmored = b.kind === 'villain' && needRic > 0 && (p.structureBounces || 0) < needRic;
@@ -2445,6 +2458,39 @@
     return { nx: pick.nx, ny: pick.ny, pen: Math.max(er * 0.35, er - minEdge + er * 0.08) };
   }
 
+  /** Push the projectile out of solid geometry (no bounce) to fix corner / seam penetration. */
+  function dePenetrateProjectile(p) {
+    const er = projectileRadiusWorld();
+    for (let iter = 0; iter < 10; iter++) {
+      let bestB = null;
+      let bestPen = -1;
+      for (let i = 0; i < towers.length; i++) {
+        const b = towers[i];
+        if (b.hp <= 0 || b.kind === 'lava' || b.kind === 'vine') {
+          continue;
+        }
+        if (!isMetalKind(b.kind) && b.kind !== 'wood' && b.kind !== 'stone' && b.kind !== 'villain') {
+          continue;
+        }
+        if (!circleRectHit(p.x, p.y, er, b)) {
+          continue;
+        }
+        const cn = contactNormalForRect(p, b, er);
+        if (cn.pen > bestPen) {
+          bestPen = cn.pen;
+          bestB = b;
+        }
+      }
+      if (!bestB || bestPen < 0.01) {
+        break;
+      }
+      const cn = contactNormalForRect(p, bestB, er);
+      const sh = Math.max(bestPen, 0.06) * 0.78 + 0.1;
+      p.x += cn.nx * sh;
+      p.y += cn.ny * sh;
+    }
+  }
+
   function projectileOverlapsAnyVine(p) {
     const er = projectileRadiusWorld();
     for (const b of towers) {
@@ -2463,6 +2509,9 @@
       return;
     }
     const p = projectile;
+    if (!projectileOverlapsAnyVine(p)) {
+      p.vineStuck = false;
+    }
     p._dmgOnce = new Set();
     p._metalVelBump = new Set();
     const er = projectileRadiusWorld();
@@ -2499,6 +2548,7 @@
       if (!projectile) {
         return;
       }
+      dePenetrateProjectile(p);
     }
 
     p.rot += (p.spin || SPIN_BASE) * dt;
@@ -2506,9 +2556,9 @@
     const spd = Math.hypot(p.vx, p.vy);
     const grounded = p.y + er >= GROUND_Y - 0.5;
     const oob = p.x > WORLD_W + 140 || p.x < -140;
-    const settled = grounded && spd < 2.05;
+    const settled = grounded && spd < 1.42 && Math.abs(p.vy) < 0.92;
     const inVine = projectileOverlapsAnyVine(p);
-    const vineDone = inVine && spd < 0.48;
+    const vineDone = inVine && ((p.vineStuck && spd < 0.46) || spd < 0.26);
     if (oob || settled || vineDone) {
       completeShotAndAdvanceTurn();
     }
