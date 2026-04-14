@@ -20,7 +20,8 @@ FastAPI app that serves a small **MQTT Arcade** dashboard plus static HTML clien
 - Builder mode keeps every stamp as an individual grid tile (Mario Maker style).
 - Play test compiles touching same-kind tiles into merged collision pieces only for that play session.
 - Stopping play test restores the original unmerged edit layout, and JSON export saves the unmerged tiles.
-- The level editor reserves the bottom-left launcher rectangle as a **no-build** zone (same bounds as slingshot placement); Play test requires at least one villain and will show a browser alert if you try without one.
+- The level editor uses a **no-build** zone for the bottom-left corner plus a padded pocket around the slingshot so parts cannot sit on the launcher; Play test requires at least one villain and will show a browser alert if you try without one.
+- Beams (solid bouncy rails) are **indestructible** in play; wood, stone, and villains take damage from shots.
 - When preparing the Coolmath package, include the Lobber runtime files under `static/lobber/` (`game.html`, `index.html`, `lobber.js`, `lobber.css`) plus any assets they reference.
 
 ## Local install and run

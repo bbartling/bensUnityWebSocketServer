@@ -143,6 +143,26 @@
     return { id, x, y, w, h, hp: 9999, kind: 'beam', pts: 0, emoji: '' };
   }
 
+  /** Rebuild one JSON level piece with the correct constructor (beams/lava/vines stay indestructible). */
+  function pieceFromLevelJson(p) {
+    const id = p.id | 0;
+    const x = p.x | 0;
+    const y = p.y | 0;
+    const w = Math.max(4, p.w | 0);
+    const h = Math.max(4, p.h | 0);
+    const kind = p.kind || 'wood';
+    if (kind === 'beam') {
+      return beamPlank(id, x, y, w, h);
+    }
+    if (kind === 'lava') {
+      return lavaBar(id, x, y, w, h);
+    }
+    if (kind === 'vine') {
+      return vineHang(id, x, y, w, h);
+    }
+    return tower(id, x, y, w, h, p.hp | 0, kind, p.pts | 0, p.emoji || '');
+  }
+
   /**
    * Stacked pyramid: bottom row has `bottomN` blocks, apex is one villain.
    * If `lavaBetweenLayers`, thin lava strips sit between every other brick layer.
@@ -777,15 +797,29 @@
     return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
   }
 
-  function pieceOverlapsCustomLauncherReserved(piece) {
+  /** Extra no-build padding around the slingshot anchor (posts + band), even if sling moves in the corner. */
+  function slingPocketKeepoutRect() {
+    const k = slingScale();
+    const mw = 72 * k;
+    const mh = 100 * k;
+    return {
+      x: SLING.x - mw,
+      y: SLING.y - mh * 0.62,
+      w: mw * 2,
+      h: mh * 1.78,
+    };
+  }
+
+  /** True if a placed rect overlaps the reserved corner and/or the slingshot pocket (edit mode only). */
+  function pieceOverlapsLauncherNoBuild(piece) {
     if (!useCustomLevel || editorMode !== 'edit' || !piece) {
       return false;
     }
     const zone = customLauncherReservedRect();
-    if (zone.w < 1 || zone.h < 1) {
-      return false;
-    }
-    return rectsOverlapWorld(piece, zone);
+    const pocket = slingPocketKeepoutRect();
+    const inZone = zone.w >= 1 && zone.h >= 1 && rectsOverlapWorld(piece, zone);
+    const inPocket = pocket.w >= 1 && pocket.h >= 1 && rectsOverlapWorld(piece, pocket);
+    return inZone || inPocket;
   }
 
   function aliveVillainCount() {
@@ -999,9 +1033,7 @@
       return false;
     }
     customMeta = { name: o.name || 'My level', ricochet: !!o.ricochet };
-    const tw = o.pieces.map((p) =>
-      tower(p.id, p.x, p.y, p.w, p.h, p.hp, p.kind, p.pts || 0, p.emoji || ''),
-    );
+    const tw = o.pieces.map((p) => pieceFromLevelJson(p));
     useCustomLevel = true;
     applyCustomWorld(o.worldW | 0, o.worldH | 0, o.sling || { x: 140, y: 300 }, tw);
     syncBuilderForm();
@@ -1220,8 +1252,8 @@
       piece.x + piece.w <= WORLD_W - 6 &&
       piece.y + piece.h <= WORLD_H - 8
     ) {
-      if (pieceOverlapsCustomLauncherReserved(piece)) {
-        turnLine.textContent = 'Cannot build in the launcher zone (bottom-left reserved area).';
+      if (pieceOverlapsLauncherNoBuild(piece)) {
+        turnLine.textContent = 'Cannot build on or over the launcher (reserved corner + slingshot pocket).';
         return;
       }
       pushBuilderUndo(`place ${buildTool}`);
@@ -1458,11 +1490,11 @@
         nx = Math.max(4, Math.min(WORLD_W - b.w - 4, nx));
         ny = Math.max(4, Math.min(GROUND_Y - b.h - 2, ny));
         const trial = { x: nx, y: ny, w: b.w, h: b.h };
-        if (!pieceOverlapsCustomLauncherReserved(trial)) {
+        if (!pieceOverlapsLauncherNoBuild(trial)) {
           b.x = nx;
           b.y = ny;
         } else {
-          turnLine.textContent = 'Cannot move blocks into the launcher zone (bottom-left reserved area).';
+          turnLine.textContent = 'Cannot move parts onto the launcher (reserved corner + slingshot pocket).';
         }
       }
     }
@@ -1476,10 +1508,10 @@
       hadPieceDrag && buildDragPieceStart ? { x: buildDragPieceStart.x, y: buildDragPieceStart.y } : null;
     if (editorMode === 'edit' && hadPieceDrag && draggedPieceId != null) {
       const b = towers.find((t) => t.id === draggedPieceId);
-      if (b && pieceOverlapsCustomLauncherReserved(b) && savedPieceStart) {
+      if (b && pieceOverlapsLauncherNoBuild(b) && savedPieceStart) {
         b.x = savedPieceStart.x;
         b.y = savedPieceStart.y;
-        turnLine.textContent = 'Cannot leave blocks in the launcher zone (bottom-left reserved area).';
+        turnLine.textContent = 'Cannot leave parts on the launcher (reserved corner + slingshot pocket).';
       }
       if (b && savedPieceStart && (b.x !== savedPieceStart.x || b.y !== savedPieceStart.y)) {
         pushBuilderUndoSnapshot('move piece', buildDragPieceUndoSnap);
@@ -1578,7 +1610,7 @@
       '<label class="lobber-builder-check"><input type="checkbox" id="lobberBuilderSnap" checked /> Snap grid</label>',
       '</div>',
       '<div class="lobber-builder-tools">',
-      '<span class="lobber-builder-hint">Mario-style builder: one-tile pieces on a shared grid · Bottom-left launcher area is no-build · Same-kind tiles merge only in Play test · Erase clears a merged piece</span>',
+      '<span class="lobber-builder-hint">Mario-style builder: one-tile pieces on a shared grid · No-build over launcher (corner zone + sling pocket) · Beams are indestructible in play · Same-kind tiles merge only in Play test · Erase clears a merged piece</span>',
       '<button type="button" class="lobber-tool" data-build-tool="wood">Wood</button>',
       '<button type="button" class="lobber-tool" data-build-tool="stone">Stone</button>',
       '<button type="button" class="lobber-tool" data-build-tool="lava">Lava</button>',
@@ -2192,25 +2224,52 @@
 
   function resolveHits(p) {
     const pr = p.power || defaultPower();
+    const er = projectileRadiusWorld();
     for (const b of towers) {
-      if (b.hp <= 0) {
-        continue;
-      }
-      if (!circleRectHit(p.x, p.y, projectileRadiusWorld(), b)) {
-        continue;
-      }
-      if (b.kind === 'lava') {
+      if (b.hp > 0 && b.kind === 'lava' && circleRectHit(p.x, p.y, er, b)) {
         spawnDebris(p.x, p.y, '🔥');
         spawnDebris(p.x, p.y, '💀');
         beep(90, 0.22);
         completeShotAndAdvanceTurn();
         return;
       }
-      if (b.kind === 'vine') {
-        const er = projectileRadiusWorld();
+    }
+    /**
+     * Resolve one structural block at a time, deepest penetration first.
+     * Prevents two adjacent rects at a corner from applying conflicting normals in the same pass.
+     */
+    const usedBlock = new Set();
+    for (let iter = 0; iter < 5; iter++) {
+      let bestB = null;
+      let bestPen = -1;
+      for (const b of towers) {
+        if (b.hp <= 0 || b.kind === 'lava') {
+          continue;
+        }
+        if (b.kind !== 'vine' && b.kind !== 'beam' && b.kind !== 'wood' && b.kind !== 'stone' && b.kind !== 'villain') {
+          continue;
+        }
+        if (usedBlock.has(b.id)) {
+          continue;
+        }
+        if (!circleRectHit(p.x, p.y, er, b)) {
+          continue;
+        }
         const cn = contactNormalForRect(p, b, er);
-        p.x += cn.nx * cn.pen * 0.5;
-        p.y += cn.ny * cn.pen * 0.5;
+        if (cn.pen > bestPen) {
+          bestPen = cn.pen;
+          bestB = b;
+        }
+      }
+      if (!bestB || bestPen < 0.015) {
+        break;
+      }
+      usedBlock.add(bestB.id);
+      const b = bestB;
+      if (b.kind === 'vine') {
+        const cn = contactNormalForRect(p, b, er);
+        p.x += cn.nx * (cn.pen * 0.52 + 0.06);
+        p.y += cn.ny * (cn.pen * 0.52 + 0.06);
         p.vx *= 0.16;
         p.vy = p.vy * 0.2 + 0.14;
         p.spin = (p.spin || 0) * 0.88;
@@ -2219,10 +2278,9 @@
         continue;
       }
       if (b.kind === 'beam') {
-        const er = projectileRadiusWorld();
         const cn = contactNormalForRect(p, b, er);
-        p.x += cn.nx * (cn.pen + 0.18) * 0.58;
-        p.y += cn.ny * (cn.pen + 0.18) * 0.58;
+        p.x += cn.nx * (cn.pen + 0.2) * 0.58;
+        p.y += cn.ny * (cn.pen + 0.2) * 0.58;
         const vn = p.vx * cn.nx + p.vy * cn.ny;
         const bumpOnce = p._beamVelBump || null;
         if (!bumpOnce || !bumpOnce.has(b.id)) {
@@ -2243,10 +2301,9 @@
         }
         continue;
       }
-      const er = projectileRadiusWorld();
       const cn = contactNormalForRect(p, b, er);
-      p.x += cn.nx * (cn.pen + 0.14) * 0.55;
-      p.y += cn.ny * (cn.pen + 0.14) * 0.55;
+      p.x += cn.nx * (cn.pen + 0.16) * 0.55;
+      p.y += cn.ny * (cn.pen + 0.16) * 0.55;
       const vn = p.vx * cn.nx + p.vy * cn.ny;
       const bm = (pr.bounceMul || 1) * BOUNCE_DAMP;
       if (vn < -0.28 && (b.kind === 'wood' || b.kind === 'stone')) {
@@ -2260,6 +2317,9 @@
       const villainArmored = b.kind === 'villain' && needRic > 0 && (p.structureBounces || 0) < needRic;
       if (villainArmored) {
         beep(130, 0.04);
+        continue;
+      }
+      if (b.kind === 'beam' || b.kind === 'lava' || b.kind === 'vine') {
         continue;
       }
       let dmg = pr.dmg || 1;
@@ -2303,29 +2363,76 @@
   }
 
   function contactNormalForRect(p, b, er) {
-    const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
-    const ny = Math.max(b.y, Math.min(p.y, b.y + b.h));
-    let dx = p.x - nx;
-    let dy = p.y - ny;
-    let d = Math.hypot(dx, dy);
-    if (d > 1e-6) {
-      return { nx: dx / d, ny: dy / d, pen: Math.max(0, er - d) };
+    const px = p.x;
+    const py = p.y;
+    const bx = b.x;
+    const by = b.y;
+    const bw = b.w;
+    const bh = b.h;
+    const cx = Math.max(bx, Math.min(px, bx + bw));
+    const cy = Math.max(by, Math.min(py, by + bh));
+    const dx = px - cx;
+    const dy = py - cy;
+    const d2 = dx * dx + dy * dy;
+    const vx = p.vx || 0;
+    const vy = p.vy || 0;
+    const dEps = 1e-8;
+    if (d2 > dEps) {
+      const d = Math.sqrt(d2);
+      let nx = dx / d;
+      let ny = dy / d;
+      let pen = Math.max(0, er - d);
+      // Near a rect corner, dx/dy is unstable; bias to a cardinal axis using velocity (into surface).
+      const cornerBlend = d < er * 0.28 && Math.abs(Math.abs(dx) - Math.abs(dy)) < d * 0.42;
+      if (cornerBlend) {
+        const card = [
+          { nx: -1, ny: 0 },
+          { nx: 1, ny: 0 },
+          { nx: 0, ny: -1 },
+          { nx: 0, ny: 1 },
+        ];
+        let best = card[0];
+        let bestDot = best.nx * vx + best.ny * vy;
+        for (let i = 1; i < 4; i++) {
+          const c = card[i];
+          const dot = c.nx * vx + c.ny * vy;
+          if (dot < bestDot - 1e-5) {
+            best = c;
+            bestDot = dot;
+          }
+        }
+        if (bestDot < -0.04) {
+          nx = best.nx;
+          ny = best.ny;
+          pen = Math.max(pen, er - d + er * 0.06);
+        }
+      }
+      return { nx, ny, pen };
     }
-    const left = Math.abs(p.x - b.x);
-    const right = Math.abs(b.x + b.w - p.x);
-    const top = Math.abs(p.y - b.y);
-    const bot = Math.abs(b.y + b.h - p.y);
+    const left = Math.abs(px - bx);
+    const right = Math.abs(bx + bw - px);
+    const top = Math.abs(py - by);
+    const bot = Math.abs(by + bh - py);
     const minEdge = Math.min(left, right, top, bot);
-    if (minEdge === left) {
-      return { nx: -1, ny: 0, pen: er + left };
+    const tieSlop = Math.max(0.55, er * 0.12);
+    const edges = [
+      { nx: -1, ny: 0, dist: left },
+      { nx: 1, ny: 0, dist: right },
+      { nx: 0, ny: -1, dist: top },
+      { nx: 0, ny: 1, dist: bot },
+    ];
+    const near = edges.filter((e) => e.dist <= minEdge + tieSlop);
+    let pick = near[0] || edges[0];
+    let pickDot = pick.nx * vx + pick.ny * vy;
+    for (let i = 1; i < near.length; i++) {
+      const e = near[i];
+      const dot = e.nx * vx + e.ny * vy;
+      if (dot < pickDot - 1e-5) {
+        pick = e;
+        pickDot = dot;
+      }
     }
-    if (minEdge === right) {
-      return { nx: 1, ny: 0, pen: er + right };
-    }
-    if (minEdge === top) {
-      return { nx: 0, ny: -1, pen: er + top };
-    }
-    return { nx: 0, ny: 1, pen: er + bot };
+    return { nx: pick.nx, ny: pick.ny, pen: Math.max(er * 0.35, er - minEdge + er * 0.08) };
   }
 
   function projectileOverlapsAnyVine(p) {
@@ -2619,16 +2726,22 @@
       return;
     }
     const z = customLauncherReservedRect();
-    if (z.w < 2 || z.h < 2) {
-      return;
-    }
+    const pocket = slingPocketKeepoutRect();
     ctx.save();
-    ctx.fillStyle = 'rgba(255, 120, 90, 0.1)';
-    ctx.strokeStyle = 'rgba(255, 200, 140, 0.38)';
     ctx.setLineDash([10, 7]);
     ctx.lineWidth = Math.max(1.5, (WORLD_W / REF_WORLD_W) * 1.1);
-    ctx.fillRect(z.x, z.y, z.w, z.h);
-    ctx.strokeRect(z.x + 0.5, z.y + 0.5, z.w - 1, z.h - 1);
+    if (z.w >= 2 && z.h >= 2) {
+      ctx.fillStyle = 'rgba(255, 120, 90, 0.1)';
+      ctx.strokeStyle = 'rgba(255, 200, 140, 0.38)';
+      ctx.fillRect(z.x, z.y, z.w, z.h);
+      ctx.strokeRect(z.x + 0.5, z.y + 0.5, z.w - 1, z.h - 1);
+    }
+    if (pocket.w >= 2 && pocket.h >= 2) {
+      ctx.fillStyle = 'rgba(180, 140, 255, 0.09)';
+      ctx.strokeStyle = 'rgba(200, 170, 255, 0.42)';
+      ctx.fillRect(pocket.x, pocket.y, pocket.w, pocket.h);
+      ctx.strokeRect(pocket.x + 0.5, pocket.y + 0.5, pocket.w - 1, pocket.h - 1);
+    }
     ctx.setLineDash([]);
     ctx.restore();
   }
