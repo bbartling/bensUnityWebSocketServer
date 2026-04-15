@@ -1,11 +1,14 @@
-"""Headless browser: load arcade pages and report console errors + uncaught page errors.
+"""Headless browser: load every arcade game URL and fail on console or page issues.
 
 Requires: pip install playwright && playwright install chromium
 
+Loads each path from arcade_game_urls.BROWSER_CONSOLE_CHECK_PAGES (dashboard + all
+game entry pages). Fails on: uncaught page errors, console type `error`, and
+console type `warning` unless the message matches an allowlisted substring in
+arcade_game_urls.ALLOWED_CONSOLE_WARNING_SUBSTRINGS.
+
 At the end prints '--- verification ---' and a single VERIFICATION line:
-  PASSED - no console errors and no page errors (exit 0), or
-  PASSED with warnings-only noted for some pages (still exit 0 if no errors), or
-  FAILED (exit 1), or SKIPPED if Playwright is missing (exit 2).
+  PASSED (exit 0), FAILED (exit 1), or SKIPPED if Playwright is missing (exit 2).
 
 Usage:
   python scripts/check_browser_console.py http://127.0.0.1:8877
@@ -13,18 +16,31 @@ Usage:
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+_BASE_DIR = Path(__file__).resolve().parent
+if str(_BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(_BASE_DIR))
+
+from arcade_game_urls import ALLOWED_CONSOLE_WARNING_SUBSTRINGS, BROWSER_CONSOLE_CHECK_PAGES
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 
-PAGES = [
-    "/",
-    "/lobber/game.html",
-    "/lobber/index.html",
-    "/tetris/man.html",
-    "/tetris/boy.html",
-    "/pong/man.html",
-    "/pong/boy.html",
-]
+PAGES = BROWSER_CONSOLE_CHECK_PAGES
+
+
+def blocking_warnings(warns: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Drop warnings whose text contains any allowlisted substring (case-insensitive)."""
+    if not warns:
+        return []
+    allow = [a.lower() for a in ALLOWED_CONSOLE_WARNING_SUBSTRINGS if a]
+    bad: list[tuple[str, str]] = []
+    for t, text in warns:
+        low = text.lower()
+        if any(fragment in low for fragment in allow):
+            continue
+        bad.append((t, text))
+    return bad
 
 
 def run_lobber_functional_smoke(page) -> list[str]:
@@ -107,8 +123,7 @@ def main() -> int:
         return 2
 
     exit_code = 0
-    n_ok_clean = 0
-    n_ok_warn = 0
+    n_ok = 0
     n_fail = 0
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -144,6 +159,7 @@ def main() -> int:
                     print(f"  {e}")
             errs = [x for x in logs if x[0] == "error"]
             warns = [x for x in logs if x[0] == "warning"]
+            bad_warns = blocking_warnings(warns)
             if path == "/lobber/game.html":
                 func_fails = run_lobber_functional_smoke(page)
                 if func_fails:
@@ -159,17 +175,18 @@ def main() -> int:
                 print(f"CONSOLE.error {path}:")
                 for _t, text in errs:
                     print(f"  {text}")
-            if warns:
+            if bad_warns:
+                exit_code = 1
+                if not page_errors and not errs:
+                    n_fail += 1
                 print(f"CONSOLE.warning {path}:")
-                for _t, text in warns:
+                for _t, text in bad_warns:
                     print(f"  {text}")
-            if not page_errors and not errs:
-                if warns:
-                    print(f"OK {path} (warnings only)")
-                    n_ok_warn += 1
-                else:
-                    print(f"OK {path} (no errors/warnings in 3.5s window)")
-                    n_ok_clean += 1
+            elif warns:
+                print(f"CONSOLE.warning (allowlisted) {path}: {len(warns)} message(s)")
+            if not page_errors and not errs and not bad_warns:
+                print(f"OK {path} (no errors / no blocking warnings in 3.5s window)")
+                n_ok += 1
 
             page.close()
         browser.close()
@@ -179,19 +196,14 @@ def main() -> int:
     if exit_code != 0:
         print(
             f"VERIFICATION: FAILED - {n_fail} page load(s) with page errors, console errors, "
-            f"or navigation failure (see above). Clean: {n_ok_clean}, warnings-only: {n_ok_warn}."
+            f"blocking console warnings, functional smoke failure, or navigation error (see above). "
+            f"Clean pages: {n_ok}."
         )
     else:
-        if n_ok_warn:
-            print(
-                f"VERIFICATION: PASSED - no errors: no console errors and no page errors across "
-                f"{len(PAGES)} pages ({n_ok_warn} page(s) had browser warnings only; see above)."
-            )
-        else:
-            print(
-                f"VERIFICATION: PASSED - no errors: no console errors and no page errors across "
-                f"{len(PAGES)} pages."
-            )
+        print(
+            f"VERIFICATION: PASSED - no page errors, no console errors, and no blocking console warnings "
+            f"across {len(PAGES)} pages."
+        )
 
     return exit_code
 

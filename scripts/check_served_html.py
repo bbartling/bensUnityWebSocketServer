@@ -1,5 +1,8 @@
 """Basic smoke check: served HTML returns 200 and local static refs resolve.
 
+URLs are listed in arcade_game_urls.SERVED_HTML_CHECK_PAGES (dashboard + every
+game HTML entry point).
+
 At the end prints '--- verification ---' and VERIFICATION: PASSED or FAILED
 (no errors means exit code 0 and a PASSED line with no FAIL lines above).
 
@@ -14,20 +17,17 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+_BASE_DIR = Path(__file__).resolve().parent
+if str(_BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(_BASE_DIR))
+
+from arcade_game_urls import SERVED_HTML_CHECK_PAGES
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8877"
 
-PAGES = [
-    "/lobber/game.html",
-    "/lobber/index.html",
-    "/tetris/man.html",
-    "/tetris/boy.html",
-    "/tetris/index.html",
-    "/pong/man.html",
-    "/pong/boy.html",
-    "/pong/index.html",
-    "/",
-]
+PAGES = SERVED_HTML_CHECK_PAGES
 
 ATTR_RE = re.compile(r"""(?:href|src)=["']([^"']+)["']""", re.I)
 

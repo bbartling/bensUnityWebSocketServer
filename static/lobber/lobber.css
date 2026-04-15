@@ -538,6 +538,49 @@ body.lobber-playtest #lobberPlaytestHud {
   display: none !important;
 }
 
+/* During play test gameplay: only Stop — full bar + level pills were covering the canvas on small viewports. */
+body.lobber-playtest .lobber-playtest-hud.lobber-playtest-hud--minimal {
+  left: auto;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+body.lobber-playtest .lobber-playtest-hud.lobber-playtest-hud--minimal .lobber-playtest-hud-inner {
+  max-width: none;
+  margin: 0;
+  padding: 10px 12px max(10px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-right, 0px));
+  display: flex;
+  justify-content: flex-end;
+}
+
+body.lobber-playtest .lobber-playtest-hud.lobber-playtest-hud--minimal .lobber-playtest-hud-top {
+  margin: 0;
+  width: 100%;
+  justify-content: flex-end;
+  gap: 0;
+}
+
+body.lobber-playtest .lobber-playtest-hud.lobber-playtest-hud--minimal .lobber-playtest-badge,
+body.lobber-playtest .lobber-playtest-hud.lobber-playtest-hud--minimal .lobber-playtest-hud-sub,
+body.lobber-playtest .lobber-playtest-hud.lobber-playtest-hud--minimal .lobber-playtest-levels {
+  display: none !important;
+}
+
+body.lobber-playtest .lobber-playtest-hud.lobber-playtest-hud--minimal .lobber-playtest-stop {
+  pointer-events: auto;
+  box-shadow:
+    0 4px 0 rgba(0, 0, 0, 0.35),
+    0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
 .lobber-playtest-hud-inner {
   max-width: 960px;
   margin: 0 auto;

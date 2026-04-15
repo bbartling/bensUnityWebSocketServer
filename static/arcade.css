@@ -206,6 +206,13 @@ a.game-card:active {
     #05060a;
 }
 
+.card-visual.tictactoe {
+  background:
+    radial-gradient(circle at 40% 35%, rgba(255, 200, 0, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 70% 65%, rgba(0, 240, 255, 0.07) 0%, transparent 40%),
+    #05060a;
+}
+
 .card-visual.lobber {
   background:
     radial-gradient(circle at 30% 70%, rgba(255, 200, 0, 0.14) 0%, transparent 42%),
@@ -371,6 +378,73 @@ footer code {
   background: var(--retro-cyan);
   border: 2px solid #0a0a10;
   box-shadow: 0 0 12px var(--retro-cyan);
+}
+
+.ico-tictactoe {
+  display: grid;
+  grid-template-columns: repeat(3, 22px);
+  grid-template-rows: repeat(3, 22px);
+  gap: 4px;
+  padding: 12px 14px;
+  background: linear-gradient(165deg, #363e54 0%, #2a3144 42%, #222838 100%);
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  border-radius: 4px;
+  box-shadow:
+    0 3px 0 #050508,
+    0 8px 20px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.ico-tictactoe b {
+  display: block;
+  border-radius: 2px;
+  border: 2px solid #0a0a10;
+  background: rgba(12, 16, 24, 0.85);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  position: relative;
+}
+
+.ico-tictactoe b.tt-x {
+  background: linear-gradient(135deg, rgba(107, 140, 255, 0.35) 0%, rgba(60, 80, 140, 0.5) 100%);
+}
+
+.ico-tictactoe b.tt-x::before,
+.ico-tictactoe b.tt-x::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 3px;
+  margin: -1px 0 0 -7px;
+  background: #6b8cff;
+  border-radius: 1px;
+  box-shadow: 0 0 4px rgba(107, 140, 255, 0.6);
+}
+
+.ico-tictactoe b.tt-x::before {
+  transform: rotate(45deg);
+}
+
+.ico-tictactoe b.tt-x::after {
+  transform: rotate(-45deg);
+}
+
+.ico-tictactoe b.tt-o {
+  background: linear-gradient(135deg, rgba(255, 107, 139, 0.25) 0%, rgba(140, 60, 90, 0.45) 100%);
+}
+
+.ico-tictactoe b.tt-o::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  border: 2px solid #ff6b8b;
+  box-shadow: 0 0 5px rgba(255, 107, 139, 0.45);
 }
 
 /* Emoji Lobber — slingshot + spinning projectile */

@@ -12,7 +12,10 @@
   }
 
   const PLAYER_ID = 'Man';
-  const LOBBER_DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
+  const _lobberUrlParams = new URLSearchParams(window.location.search);
+  const LOBBER_DEBUG = _lobberUrlParams.get('debug') === '1';
+  /** Collision / stuck troubleshooting — add ?physics=1 (or use ?debug=1) to log to the browser console. */
+  const LOBBER_PHYS_LOG = LOBBER_DEBUG || _lobberUrlParams.get('physics') === '1';
 
   /** Verbose trace — add ?debug=1 to the URL. */
   function dlog() {
@@ -21,6 +24,28 @@
       args.unshift('[Lobber]');
       console.log.apply(console, args);
     }
+  }
+
+  function physLog() {
+    if (!LOBBER_PHYS_LOG) {
+      return;
+    }
+    const args = Array.prototype.slice.call(arguments);
+    args.unshift('[LobberPhysics]');
+    console.log.apply(console, args);
+  }
+
+  function physLogThrottle(p, key, minIntervalMs, fn) {
+    if (!LOBBER_PHYS_LOG || !p || typeof fn !== 'function') {
+      return;
+    }
+    const now = performance.now();
+    const k = '_physTh_' + key;
+    if (p[k] != null && now - p[k] < minIntervalMs) {
+      return;
+    }
+    p[k] = now;
+    fn();
   }
 
   let CANVAS_W = 900;
@@ -674,11 +699,20 @@
     document.body.classList.add('lobber-builder-active');
   }
 
+  function setPlaytestHudMinimal(on) {
+    const h = document.getElementById('lobberPlaytestHud');
+    if (!h) {
+      return;
+    }
+    h.classList.toggle('lobber-playtest-hud--minimal', !!on);
+  }
+
   function hidePlaytestHud() {
     const h = document.getElementById('lobberPlaytestHud');
     if (h) {
       h.classList.add('hidden');
       h.setAttribute('aria-hidden', 'true');
+      h.classList.remove('lobber-playtest-hud--minimal');
     }
   }
 
@@ -736,7 +770,7 @@
       '<div class="lobber-playtest-hud-inner">',
       '<div class="lobber-playtest-hud-top">',
       '<span class="lobber-playtest-badge">Play test</span>',
-      '<button type="button" class="lobber-playtest-stop" id="lobberPlaytestStopBtn">Stop test</button>',
+      '<button type="button" class="lobber-playtest-stop" id="lobberPlaytestStopBtn" aria-label="Stop play test">Stop test</button>',
       '</div>',
       '<div class="lobber-playtest-hud-sub">Campaign stages — tap to open that layout in the editor</div>',
       '<div id="lobberPlaytestLevels" class="lobber-playtest-levels"></div>',
@@ -1176,6 +1210,7 @@
     document.body.classList.remove('lobber-builder-active');
     hideBuilderPanel();
     showPlaytestHud();
+    setPlaytestHudMinimal(true);
     setTurnLine();
     refreshGameInfo();
     syncPlayStopButtons();
@@ -1897,6 +1932,14 @@
       vineStuck: false,
     };
     setTurnLine();
+    physLog('shot start', {
+      x: Math.round(SLING.x * 100) / 100,
+      y: Math.round(SLING.y * 100) / 100,
+      vx: Math.round(vx * 1000) / 1000,
+      vy: Math.round(vy * 1000) / 1000,
+      emoji,
+      er: Math.round(projectileRadiusWorld() * 1000) / 1000,
+    });
   }
 
   function completeShotAndAdvanceTurn() {
@@ -2050,6 +2093,33 @@
     setScoreText();
   }
 
+  /** Overlapping structural blocks + contact normal (for corner / stuck diagnosis). */
+  function physicsSolidHitsSummary(p, er) {
+    const hits = [];
+    for (const b of towers) {
+      if (b.hp <= 0 || b.kind === 'lava') {
+        continue;
+      }
+      if (b.kind !== 'vine' && !isMetalKind(b.kind) && b.kind !== 'wood' && b.kind !== 'stone' && b.kind !== 'villain') {
+        continue;
+      }
+      if (!circleRectHit(p.x, p.y, er, b)) {
+        continue;
+      }
+      const cn = contactNormalForRect(p, b, er);
+      const vn = p.vx * cn.nx + p.vy * cn.ny;
+      hits.push({
+        id: b.id,
+        kind: b.kind,
+        pen: Math.round(Math.max(0, cn.pen) * 1000) / 1000,
+        vn: Math.round(vn * 1000) / 1000,
+        n: { nx: Math.round(cn.nx * 1000) / 1000, ny: Math.round(cn.ny * 1000) / 1000 },
+      });
+    }
+    hits.sort((a, c) => c.pen - a.pen);
+    return hits.slice(0, 8);
+  }
+
   function resolveHits(p) {
     const pr = p.power || defaultPower();
     const er = projectileRadiusWorld();
@@ -2058,6 +2128,7 @@
         spawnDebris(p.x, p.y, '🔥');
         spawnDebris(p.x, p.y, '💀');
         beep(90, 0.22);
+        physLog('shot end', { reason: 'lava', pos: { x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 } });
         completeShotAndAdvanceTurn();
         return;
       }
@@ -2260,9 +2331,10 @@ function contactNormalForRect(p, b, er) {
     return { nx: pick.nx, ny: pick.ny, pen: Math.max(er * 0.35, er - minEdge + er * 0.08) };
   }
 
-  /** Push the projectile out of solid geometry (no bounce) to fix corner / seam penetration. */
+  /** Push the projectile out of solid geometry (no bounce) to fix corner / seam penetration. Returns push count this call. */
   function dePenetrateProjectile(p) {
     const er = projectileRadiusWorld();
+    let pushes = 0;
     for (let iter = 0; iter < 10; iter++) {
       let bestB = null;
       let bestPen = -1;
@@ -2290,7 +2362,9 @@ function contactNormalForRect(p, b, er) {
       const sh = Math.max(bestPen, 0.06) * 0.78 + 0.1;
       p.x += cn.nx * sh;
       p.y += cn.ny * sh;
+      pushes++;
     }
+    return pushes;
   }
 
   function projectileOverlapsAnyVine(p) {
@@ -2323,6 +2397,7 @@ function contactNormalForRect(p, b, er) {
     const moveLen = Math.hypot(p.vx * moveScale, preVy * moveScale);
     const nStep = Math.min(12, Math.max(1, Math.ceil(moveLen / Math.max(4, er * 0.22))));
 
+    p._depenSubstepPushes = 0;
     for (let si = 0; si < nStep; si++) {
       p.vy += gStep / nStep;
       const ox = p.x;
@@ -2334,6 +2409,19 @@ function contactNormalForRect(p, b, er) {
         const u = Math.min(1, Math.max(0, tHit + 1e-4));
         p.x = ox + (nx - ox) * u;
         p.y = oy + (ny - oy) * u;
+        physLogThrottle(p, 'ccd', 100, () => {
+          physLog('ccd', {
+            si,
+            nStep,
+            tHit: Math.round(tHit * 1e6) / 1e6,
+            u: Math.round(u * 1e6) / 1e6,
+            ox: Math.round(ox * 100) / 100,
+            oy: Math.round(oy * 100) / 100,
+            nx: Math.round(nx * 100) / 100,
+            ny: Math.round(ny * 100) / 100,
+            moveLen: Math.round(moveLen * 100) / 100,
+          });
+        });
       } else {
         p.x = nx;
         p.y = ny;
@@ -2350,7 +2438,12 @@ function contactNormalForRect(p, b, er) {
       if (!projectile) {
         return;
       }
-      dePenetrateProjectile(p);
+      p._depenSubstepPushes += dePenetrateProjectile(p);
+    }
+    if (LOBBER_PHYS_LOG && p._depenSubstepPushes > 0) {
+      physLogThrottle(p, 'depenSum', 120, () => {
+        physLog('dePenetrate substeps', { totalPushes: p._depenSubstepPushes, nStep });
+      });
     }
 
     p.rot += (p.spin || SPIN_BASE) * dt;
@@ -2361,7 +2454,42 @@ function contactNormalForRect(p, b, er) {
     const settled = grounded && spd < 1.42 && Math.abs(p.vy) < 0.92;
     const inVine = projectileOverlapsAnyVine(p);
     const vineDone = inVine && ((p.vineStuck && spd < 0.46) || spd < 0.26);
+    if (LOBBER_PHYS_LOG) {
+      const summary = physicsSolidHitsSummary(p, er);
+      const multiOverlap = summary.length > 1;
+      const deepPen = summary.length > 0 && summary[0].pen > 0.04;
+      if (multiOverlap || deepPen || spd < 2.8 || p.vineStuck) {
+        physLogThrottle(p, 'frameSum', multiOverlap ? 55 : 95, () => {
+          physLog('frame', {
+            spd: Math.round(spd * 1000) / 1000,
+            vx: Math.round(p.vx * 1000) / 1000,
+            vy: Math.round(p.vy * 1000) / 1000,
+            pos: { x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 },
+            grounded,
+            inVine,
+            vineStuck: !!p.vineStuck,
+            overlapCount: summary.length,
+            overlaps: summary,
+            structureBounces: p.structureBounces || 0,
+          });
+        });
+      }
+    }
     if (oob || settled || vineDone) {
+      if (LOBBER_PHYS_LOG) {
+        const summaryEnd = physicsSolidHitsSummary(p, er);
+        physLog('shot end', {
+          reason: oob ? 'oob' : settled ? 'settled' : 'vineDone',
+          spd: Math.round(spd * 1000) / 1000,
+          vy: Math.round(p.vy * 1000) / 1000,
+          grounded,
+          inVine,
+          vineStuck: !!p.vineStuck,
+          pos: { x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 },
+          overlaps: summaryEnd,
+          structureBounces: p.structureBounces || 0,
+        });
+      }
       completeShotAndAdvanceTurn();
     }
   }

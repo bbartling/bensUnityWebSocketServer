@@ -26,13 +26,26 @@
   const BALL_SPEED = 5.2;
 
   let audioCtx = null;
+  /** Browsers block AudioContext until a user gesture — prime on first click/key. */
+  function primeAudioFromGesture() {
+    if (audioCtx) {
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(function () {});
+      }
+      return;
+    }
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {
+      return;
+    }
+  }
+  document.addEventListener('click', primeAudioFromGesture, { once: true, passive: true });
+  document.addEventListener('keydown', primeAudioFromGesture, { once: true, passive: true });
+
   function beep(freq, dur) {
     if (!audioCtx) {
-      try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      } catch (e) {
-        return;
-      }
+      return;
     }
     const o = audioCtx.createOscillator();
     const g = audioCtx.createGain();
