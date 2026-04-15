@@ -12,7 +12,10 @@
   }
 
   const BROKER_URL = 'wss://test.mosquitto.org:8081';
-  const GAME_ID = 'bens_arcade';
+  const GAME_ID =
+    typeof window.ArcadeRoom !== 'undefined' && window.ArcadeRoom.getRoomId
+      ? window.ArcadeRoom.getRoomId('pong')
+      : 'bens_arcade';
   const HOST_ID = 'Man';
   const GUEST_ID = 'Boy';
 
@@ -73,6 +76,95 @@
     return { x: W / 2, y: H / 2, vx, vy };
   }
 
+  const SERVE_FIRST_LS = 'pong_opening_serve_v1';
+
+  function loadServePref() {
+    try {
+      const v = localStorage.getItem(SERVE_FIRST_LS);
+      if (v === 'man' || v === 'boy' || v === 'random') {
+        return v;
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    return 'random';
+  }
+
+  function saveServePref(v) {
+    if (v !== 'man' && v !== 'boy' && v !== 'random') {
+      return;
+    }
+    try {
+      localStorage.setItem(SERVE_FIRST_LS, v);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function getHostServeFirstRadio() {
+    if (cfg.role !== 'host') {
+      return 'random';
+    }
+    const fs = document.getElementById('serveFirstFieldset');
+    if (!fs) {
+      return 'random';
+    }
+    const c = fs.querySelector('input[name="serveFirst"]:checked');
+    const v = c && c.value;
+    if (v === 'man' || v === 'boy' || v === 'random') {
+      return v;
+    }
+    return 'random';
+  }
+
+  function applyServePrefsToDomHost() {
+    if (cfg.role !== 'host') {
+      return;
+    }
+    const fs = document.getElementById('serveFirstFieldset');
+    if (!fs) {
+      return;
+    }
+    const v = loadServePref();
+    const inp = fs.querySelector(`input[name="serveFirst"][value="${v}"]`);
+    if (inp) {
+      inp.checked = true;
+    }
+  }
+
+  function openingTowardRight() {
+    const p = getHostServeFirstRadio();
+    if (p === 'boy') {
+      return true;
+    }
+    if (p === 'man') {
+      return false;
+    }
+    return Math.random() > 0.5;
+  }
+
+  function serveFirstLabel(s) {
+    if (s === 'man') {
+      return 'first ball toward Man (left)';
+    }
+    if (s === 'boy') {
+      return 'first ball toward Boy (right)';
+    }
+    return 'random first ball direction';
+  }
+
+  function updateServeFirstInfoForGuest() {
+    if (cfg.role !== 'guest') {
+      return;
+    }
+    const el = document.getElementById('serveFirstInfo');
+    if (!el) {
+      return;
+    }
+    const s = guestSnap.serveFirst === 'man' || guestSnap.serveFirst === 'boy' || guestSnap.serveFirst === 'random' ? guestSnap.serveFirst : 'random';
+    el.textContent = `Host: ${serveFirstLabel(s)}`;
+  }
+
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
 
@@ -116,7 +208,7 @@
   });
 
   document.getElementById('gameInfo').innerHTML =
-    `GAME: <span class="highlight">${GAME_ID}</span> · YOU: <span class="highlight">${cfg.localLabel}</span> · ROLE: <span class="highlight">${cfg.role}</span>`;
+    `ROOM: <span class="highlight">${GAME_ID}</span> · YOU: <span class="highlight">${cfg.localLabel}</span> · ROLE: <span class="highlight">${cfg.role}</span>`;
   document.getElementById('brokerInfo').innerHTML =
     `MQTT WS: <span class="highlight">${BROKER_URL}</span>`;
 
@@ -166,15 +258,31 @@
   }
 
   /** --- Host simulation --- */
+  applyServePrefsToDomHost();
   let hostState = {
-    ball: randomBall(Math.random() > 0.5),
+    ball: randomBall(openingTowardRight()),
     leftY: H / 2 - PH / 2,
     rightY: H / 2 - PH / 2,
     scoreL: 0,
     scoreR: 0,
+    serveFirst: getHostServeFirstRadio(),
   };
   let remoteRightY = hostState.rightY;
   let lastPublish = 0;
+
+  if (cfg.role === 'host') {
+    const fs = document.getElementById('serveFirstFieldset');
+    if (fs) {
+      fs.addEventListener('change', () => {
+        const v = getHostServeFirstRadio();
+        saveServePref(v);
+        hostState.serveFirst = v;
+        if (hostState.scoreL === 0 && hostState.scoreR === 0) {
+          hostState.ball = randomBall(openingTowardRight());
+        }
+      });
+    }
+  }
 
   function bounceTopBottom(ball) {
     if (ball.y < BALL_R) {
@@ -277,6 +385,7 @@
           rightY: hostState.rightY,
           scoreL: hostState.scoreL,
           scoreR: hostState.scoreR,
+          serveFirst: hostState.serveFirst,
         }),
       );
     }
@@ -288,7 +397,9 @@
     leftY: H / 2 - PH / 2,
     scoreL: 0,
     scoreR: 0,
+    serveFirst: 'random',
   };
+  updateServeFirstInfoForGuest();
   let guestRightY = clampPaddle(H / 2 - PH / 2);
   let lastGuestSend = 0;
 
@@ -430,6 +541,10 @@
             }
             if (typeof data.scoreR === 'number') {
               guestSnap.scoreR = data.scoreR;
+            }
+            if (data.serveFirst === 'man' || data.serveFirst === 'boy' || data.serveFirst === 'random') {
+              guestSnap.serveFirst = data.serveFirst;
+              updateServeFirstInfoForGuest();
             }
             partnerOk = true;
             partnerTrying = false;

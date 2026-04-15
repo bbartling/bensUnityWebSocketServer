@@ -7,9 +7,11 @@ FastAPI app that serves a small **MQTT Arcade** dashboard plus static HTML clien
 | Game   | Man | Boy |
 |--------|-----|-----|
 | Tetris | `/tetris/man.html` (spawn right) | `/tetris/boy.html` (spawn left) |
-| Pong   | `/pong/man.html` (host, left paddle) | `/pong/boy.html` (right paddle) |
+| Pong   | `/pong/man.html` (host, left paddle, opening-serve option) | `/pong/boy.html` (right paddle) |
 | Tic Tac Toe | `/tictactoe/man.html` (host, X) | `/tictactoe/boy.html` (O) |
 | Emoji Lobber | `/lobber/game.html` (single-player) | — |
+
+**MQTT private rooms (Tetris, Pong, Tic Tac Toe)** — On each game’s **index** page (`/tetris/`, `/pong/`, `/tictactoe/`), pick a silly two-word room (or type your own). Both seats open **Man** and **Boy** with the same `?room=slug` so you only match each other. Default room `bens_arcade` is used if you skip the picker. Room choice is stored in `sessionStorage` per game.
 
 **Emoji Lobber** — Single-player Angry Birds–style pull & release, spinning projectile, destructible **wood** / **stone** + **villain emoji** targets, **lava** (shot ends on touch), **pyramid** layouts on harder stages, per-hero powers (human-face picker). **15 levels** (Easy → Impossible); pick any stage before locking in. No MQTT or network. Optional **`?debug=1`** for verbose console logs.
 
@@ -61,6 +63,7 @@ Health check:
 Run both checks against your local server:
 
 ```bash
+python scripts/arcade_game_urls.py
 python scripts/check_served_html.py http://127.0.0.1:8000
 python scripts/check_browser_console.py http://127.0.0.1:8000
 ```
@@ -68,8 +71,8 @@ python scripts/check_browser_console.py http://127.0.0.1:8000
 What to look for:
 
 - Pass condition: each script ends with `VERIFICATION: PASSED - no errors...`
-- `check_served_html.py` validates page HTML shell + local asset URL resolution.
-- `check_browser_console.py` validates runtime console/page errors and includes a Lobber functional smoke flow.
-- Pong may show AudioContext autoplay warnings; those are reported as warnings-only and are non-fatal.
+- `arcade_game_urls.py` lists all smoke URLs plus required HTML snippets; run it alone for a quick URL-list self-check.
+- `check_served_html.py` validates page HTML shell, `REQUIRED_HTML_SNIPPETS` (Lobber + MQTT room picker on index/seat pages), local asset URL resolution, and `/arcade-room-pick.{js,css}`.
+- `check_browser_console.py` validates runtime console/page errors, Lobber functional smoke, and **ArcadeRoom** picker smoke on Pong/Tetris/Tic Tac Toe index pages (silly-room button → matching `?room=` on Man/Boy links + `slugify` contract).
 
 

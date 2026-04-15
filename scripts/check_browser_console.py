@@ -3,7 +3,8 @@
 Requires: pip install playwright && playwright install chromium
 
 Loads each path from arcade_game_urls.BROWSER_CONSOLE_CHECK_PAGES (dashboard + all
-game entry pages). Fails on: uncaught page errors, console type `error`, and
+game entry pages). Runs arcade room picker smoke on ROOM_PICK_BROWSER_FUNCTIONAL_PAGES.
+Fails on: uncaught page errors, console type `error`, and
 console type `warning` unless the message matches an allowlisted substring in
 arcade_game_urls.ALLOWED_CONSOLE_WARNING_SUBSTRINGS.
 
@@ -17,12 +18,17 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 _BASE_DIR = Path(__file__).resolve().parent
 if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
 
-from arcade_game_urls import ALLOWED_CONSOLE_WARNING_SUBSTRINGS, BROWSER_CONSOLE_CHECK_PAGES
+from arcade_game_urls import (
+    ALLOWED_CONSOLE_WARNING_SUBSTRINGS,
+    BROWSER_CONSOLE_CHECK_PAGES,
+    ROOM_PICK_BROWSER_FUNCTIONAL_PAGES,
+)
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 
@@ -107,6 +113,42 @@ def run_lobber_functional_smoke(page) -> list[str]:
     return fails
 
 
+def run_arcade_room_picker_smoke(page, path: str) -> list[str]:
+    """MQTT silly-room picker: suggestions exist, click sets matching ?room= on Man/Boy links."""
+    fails: list[str] = []
+    try:
+        root = page.locator("#arcadeRoomPick")
+        if root.count() != 1:
+            fails.append("missing #arcadeRoomPick")
+            return fails
+        sug = page.locator(".arcade-room-sug-btn")
+        if sug.count() < 1:
+            fails.append("no .arcade-room-sug-btn suggestions")
+            return fails
+        sug.first.click(timeout=5000)
+        page.wait_for_timeout(250)
+        man_a = page.locator("a.a").first
+        boy_b = page.locator("a.b").first
+        man_h = man_a.get_attribute("href") or ""
+        boy_h = boy_b.get_attribute("href") or ""
+        if "?room=" not in man_h:
+            fails.append(f"MAN link missing ?room= (got {man_h!r})")
+        if "?room=" not in boy_h:
+            fails.append(f"BOY link missing ?room= (got {boy_h!r})")
+        mq = (parse_qs(urlparse(man_h).query).get("room") or [""])[0]
+        bq = (parse_qs(urlparse(boy_h).query).get("room") or [""])[0]
+        if mq and bq and mq != bq:
+            fails.append(f"MAN and BOY room slug mismatch: {mq!r} vs {bq!r}")
+        slug_js = page.evaluate(
+            "() => (window.ArcadeRoom && window.ArcadeRoom.slugify('  Big MOUSE!!  ')) || ''",
+        )
+        if slug_js != "big-mouse":
+            fails.append(f"ArcadeRoom.slugify contract: expected 'big-mouse', got {slug_js!r}")
+    except Exception as e:
+        fails.append(f"arcade room picker smoke ({path}): {e}")
+    return fails
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -160,13 +202,23 @@ def main() -> int:
             errs = [x for x in logs if x[0] == "error"]
             warns = [x for x in logs if x[0] == "warning"]
             bad_warns = blocking_warnings(warns)
+            lobber_fails: list[str] = []
+            room_fails: list[str] = []
             if path == "/lobber/game.html":
-                func_fails = run_lobber_functional_smoke(page)
-                if func_fails:
+                lobber_fails = run_lobber_functional_smoke(page)
+                if lobber_fails:
                     exit_code = 1
                     n_fail += 1
                     print(f"FUNCTIONAL.fail {path}:")
-                    for f in func_fails:
+                    for f in lobber_fails:
+                        print(f"  {f}")
+            if path in ROOM_PICK_BROWSER_FUNCTIONAL_PAGES:
+                room_fails = run_arcade_room_picker_smoke(page, path)
+                if room_fails:
+                    exit_code = 1
+                    n_fail += 1
+                    print(f"FUNCTIONAL.fail {path} (arcade room picker):")
+                    for f in room_fails:
                         print(f"  {f}")
             if errs:
                 exit_code = 1
@@ -184,8 +236,9 @@ def main() -> int:
                     print(f"  {text}")
             elif warns:
                 print(f"CONSOLE.warning (allowlisted) {path}: {len(warns)} message(s)")
-            if not page_errors and not errs and not bad_warns:
-                print(f"OK {path} (no errors / no blocking warnings in 3.5s window)")
+            if not page_errors and not errs and not bad_warns and not lobber_fails and not room_fails:
+                room_ok = ", arcade room picker OK" if path in ROOM_PICK_BROWSER_FUNCTIONAL_PAGES else ""
+                print(f"OK {path} (no errors / no blocking warnings in 3.5s window{room_ok})")
                 n_ok += 1
 
             page.close()
@@ -196,7 +249,7 @@ def main() -> int:
     if exit_code != 0:
         print(
             f"VERIFICATION: FAILED - {n_fail} page load(s) with page errors, console errors, "
-            f"blocking console warnings, functional smoke failure, or navigation error (see above). "
+            f"blocking console warnings, functional / arcade-room smoke failure, or navigation error (see above). "
             f"Clean pages: {n_ok}."
         )
     else:

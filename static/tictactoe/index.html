@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>MQTT Tic Tac Toe — Pick a seat</title>
     <link rel="stylesheet" href="/tictactoe/tictactoe.css" />
+    <link rel="stylesheet" href="/arcade-room-pick.css" />
     <style>
       :root {
         --accent: #7af0ff;
@@ -81,8 +82,19 @@
         Man hosts the board and plays <strong>X</strong> first. Boy plays <strong>O</strong> and sends moves over MQTT. Tap a square on your turn. Broker:
         <code>wss://test.mosquitto.org:8081</code>
       </p>
+      <div id="arcadeRoomPick"></div>
       <p><a class="a" href="/tictactoe/man.html">MAN</a> <a class="b" href="/tictactoe/boy.html">BOY</a></p>
       <p class="back"><a href="/">← Arcade dashboard</a></p>
     </div>
+    <script src="/arcade-room-pick.js"></script>
+    <script>
+      window.ArcadeRoom &&
+        window.ArcadeRoom.mount({
+          rootId: 'arcadeRoomPick',
+          gameKey: 'tictactoe',
+          manPath: '/tictactoe/man.html',
+          boyPath: '/tictactoe/boy.html',
+        });
+    </script>
   </body>
 </html>

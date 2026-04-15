@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>MQTT Pong — Pick a seat</title>
     <link rel="stylesheet" href="/pong/pong.css" />
+    <link rel="stylesheet" href="/arcade-room-pick.css" />
     <style>
       :root {
         --accent: #7af0ff;
@@ -81,8 +82,19 @@
         Man runs the ball and the <strong>left</strong> paddle. Boy drives the <strong>right</strong> paddle. Controls: <strong>W/S</strong> or
         <strong>↑/↓</strong>. Broker: <code>wss://test.mosquitto.org:8081</code>
       </p>
+      <div id="arcadeRoomPick"></div>
       <p><a class="a" href="/pong/man.html">MAN</a> <a class="b" href="/pong/boy.html">BOY</a></p>
       <p class="back"><a href="/">← Arcade dashboard</a></p>
     </div>
+    <script src="/arcade-room-pick.js"></script>
+    <script>
+      window.ArcadeRoom &&
+        window.ArcadeRoom.mount({
+          rootId: 'arcadeRoomPick',
+          gameKey: 'pong',
+          manPath: '/pong/man.html',
+          boyPath: '/pong/boy.html',
+        });
+    </script>
   </body>
 </html>

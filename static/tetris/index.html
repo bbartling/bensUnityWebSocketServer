@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>MQTT Tetris — Pick a seat</title>
     <link rel="stylesheet" href="/tetris/tetris.css" />
+    <link rel="stylesheet" href="/arcade-room-pick.css" />
     <style>
       :root {
         --accent: #7af0ff;
@@ -15,8 +16,19 @@
     <div class="card">
       <h1>CO‑OP TETRIS</h1>
       <p>Open two windows: one for Man (spawn right) and one for Boy (spawn left). Broker: <code>wss://test.mosquitto.org:8081</code></p>
+      <div id="arcadeRoomPick"></div>
       <p><a class="a" href="/tetris/man.html">MAN</a> <a class="b" href="/tetris/boy.html">BOY</a></p>
       <p class="back"><a href="/">← Arcade dashboard</a></p>
     </div>
+    <script src="/arcade-room-pick.js"></script>
+    <script>
+      window.ArcadeRoom &&
+        window.ArcadeRoom.mount({
+          rootId: 'arcadeRoomPick',
+          gameKey: 'tetris',
+          manPath: '/tetris/man.html',
+          boyPath: '/tetris/boy.html',
+        });
+    </script>
   </body>
 </html>

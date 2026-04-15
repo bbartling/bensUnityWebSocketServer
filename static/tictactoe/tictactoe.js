@@ -12,7 +12,10 @@
   }
 
   const BROKER_URL = 'wss://test.mosquitto.org:8081';
-  const GAME_ID = 'bens_arcade';
+  const GAME_ID =
+    typeof window.ArcadeRoom !== 'undefined' && window.ArcadeRoom.getRoomId
+      ? window.ArcadeRoom.getRoomId('tictactoe')
+      : 'bens_arcade';
   const HOST_ID = 'Man';
   const GUEST_ID = 'Boy';
 
@@ -63,7 +66,7 @@
   }
 
   document.getElementById('gameInfo').innerHTML =
-    `GAME: <span class="highlight">${GAME_ID}</span> · YOU: <span class="highlight">${cfg.localLabel}</span> · ROLE: <span class="highlight">${cfg.role}</span> · Man = <span class="highlight">X</span> · Boy = <span class="highlight">O</span>`;
+    `ROOM: <span class="highlight">${GAME_ID}</span> · YOU: <span class="highlight">${cfg.localLabel}</span> · ROLE: <span class="highlight">${cfg.role}</span> · Man = <span class="highlight">X</span> · Boy = <span class="highlight">O</span>`;
   document.getElementById('brokerInfo').innerHTML =
     `MQTT WS: <span class="highlight">${BROKER_URL}</span>`;
 

@@ -101,6 +101,46 @@ header .sub {
   word-break: break-all;
 }
 
+.serve-first {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(122, 240, 255, 0.22);
+  border-radius: 10px;
+  text-align: left;
+}
+
+.serve-first legend {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.5rem, 1.1vw, 0.6rem);
+  letter-spacing: 0.1em;
+  color: #ffe08a;
+  padding: 0 6px;
+}
+
+.serve-first-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 14px 4px 0;
+  font-size: clamp(0.62rem, 1.35vw, 0.72rem);
+  cursor: pointer;
+  user-select: none;
+}
+
+.serve-first-label input {
+  accent-color: var(--accent, #7af0ff);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.serve-first-info {
+  margin-top: 10px;
+  font-size: clamp(0.58rem, 1.25vw, 0.68rem);
+  line-height: 1.45;
+  color: rgba(200, 216, 240, 0.92);
+}
+
 #connectionInfo {
   margin-top: 12px;
   padding-top: 12px;

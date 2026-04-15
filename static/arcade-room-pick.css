@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap');
+
+/* Room picker on /pong/, /tetris/, /tictactoe/ index cards */
+.arcade-room-pick {
+  margin: 18px 0 16px;
+  padding: 14px 14px 16px;
+  text-align: left;
+  border: 1px solid rgba(122, 240, 255, 0.28);
+  border-radius: 12px;
+  background: rgba(8, 12, 22, 0.55);
+}
+
+.arcade-room-pick-title {
+  margin: 0 0 8px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  color: #ffe08a;
+}
+
+.arcade-room-pick-hint {
+  margin: 0 0 12px;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  opacity: 0.88;
+}
+
+.arcade-room-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.arcade-room-sug-btn {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.48rem;
+  letter-spacing: 0.04em;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(122, 240, 255, 0.35);
+  background: rgba(30, 40, 60, 0.95);
+  color: #e8ecf4;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.35;
+}
+
+.arcade-room-sug-btn:hover {
+  border-color: rgba(255, 224, 138, 0.55);
+  color: #fff;
+}
+
+.arcade-room-custom {
+  margin-top: 4px;
+  font-size: 0.65rem;
+}
+
+.arcade-room-custom-label {
+  display: block;
+  margin-bottom: 6px;
+  opacity: 0.9;
+}
+
+.arcade-room-input {
+  width: min(100%, 220px);
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(122, 240, 255, 0.25);
+  background: rgba(6, 10, 18, 0.9);
+  color: #e8ecf4;
+  font-size: 0.75rem;
+}
+
+.arcade-room-custom-btn {
+  margin-top: 8px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(180deg, #3d5a80 0%, #2a3f5c 100%);
+  color: #fff;
+  cursor: pointer;
+}
+
+.arcade-room-active {
+  margin: 12px 0 0;
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.arcade-room-code {
+  color: #7af0ff;
+  font-size: 0.85rem;
+}
+
+.arcade-room-tiny {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.58rem;
+  opacity: 0.75;
+}

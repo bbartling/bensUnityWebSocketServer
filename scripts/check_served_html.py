@@ -1,7 +1,8 @@
 """Basic smoke check: served HTML returns 200 and local static refs resolve.
 
 URLs are listed in arcade_game_urls.SERVED_HTML_CHECK_PAGES (dashboard + every
-game HTML entry point).
+game HTML entry point). Optional snippets in arcade_game_urls.REQUIRED_HTML_SNIPPETS
+(Lobber + MQTT room picker). arcade_game_urls.ARCADE_ROOM_STATIC_ASSETS are HEAD-checked too.
 
 At the end prints '--- verification ---' and VERIFICATION: PASSED or FAILED
 (no errors means exit code 0 and a PASSED line with no FAIL lines above).
@@ -23,17 +24,13 @@ _BASE_DIR = Path(__file__).resolve().parent
 if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
 
-from arcade_game_urls import SERVED_HTML_CHECK_PAGES
+from arcade_game_urls import ARCADE_ROOM_STATIC_ASSETS, REQUIRED_HTML_SNIPPETS, SERVED_HTML_CHECK_PAGES
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8877"
 
 PAGES = SERVED_HTML_CHECK_PAGES
 
 ATTR_RE = re.compile(r"""(?:href|src)=["']([^"']+)["']""", re.I)
-
-LOBBER_REQUIRED_SNIPPETS: dict[str, tuple[str, ...]] = {
-    "/lobber/game.html": ("id=\"gameCanvas\"", "id=\"emojiPicker\"", "/lobber/lobber.js", "id=\"openLevelBuilderPicker\""),
-}
 
 
 def fetch(url: str) -> str:
@@ -74,7 +71,7 @@ def main() -> int:
                 issues.append((path, "missing <html"))
             if "</html>" not in low:
                 issues.append((path, "missing </html>"))
-            req = LOBBER_REQUIRED_SNIPPETS.get(path)
+            req = REQUIRED_HTML_SNIPPETS.get(path)
             if req:
                 for snip in req:
                     if snip.lower() not in low:
@@ -93,6 +90,11 @@ def main() -> int:
                 ok, msg = check_url(url)
                 if not ok:
                     issues.append((path, f"ref {m!r}: {msg}"))
+        for asset in ARCADE_ROOM_STATIC_ASSETS:
+            aurl = BASE.rstrip("/") + asset
+            ok_a, msg_a = check_url(aurl)
+            if not ok_a:
+                issues.append((asset, f"arcade room asset: {msg_a}"))
     except Exception as e:
         print(f"FAIL fetch: {e}")
         print()
@@ -107,11 +109,15 @@ def main() -> int:
         print("--- verification ---")
         print(f"VERIFICATION: FAILED - {len(issues)} issue(s) (see FAIL lines above).")
         return 1
-    print(f"OK: {len(PAGES)} pages, structure + local assets resolve at {BASE}")
+    print(
+        f"OK: {len(PAGES)} pages + {len(ARCADE_ROOM_STATIC_ASSETS)} room static assets, "
+        f"structure + local assets resolve at {BASE}",
+    )
     print()
     print("--- verification ---")
     print(
-        f"VERIFICATION: PASSED - no errors: {len(PAGES)} pages, HTML shell OK, "
+        f"VERIFICATION: PASSED - no errors: {len(PAGES)} pages, required snippets OK, "
+        f"{len(ARCADE_ROOM_STATIC_ASSETS)} room static assets OK, "
         f"in-page local asset URLs returned HTTP 200 at {BASE}."
     )
     return 0

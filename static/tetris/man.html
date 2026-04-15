@@ -11,6 +11,7 @@
       }
     </style>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="/arcade-room-pick.js"></script>
   </head>
   <body>
     <div id="app">
@@ -41,8 +42,12 @@
         playerColour: '#6b8cff',
         remoteColour: '#ff6b8b',
         spawnFromRight: true,
-        gameId: 'bens_arcade',
+        gameId:
+          window.ArcadeRoom && window.ArcadeRoom.getRoomId ? window.ArcadeRoom.getRoomId('tetris') : 'bens_arcade',
       };
+    </script>
+    <script>
+      window.ArcadeRoom && window.ArcadeRoom.rewritePartnerLinks('tetris', '/tetris/man.html', '/tetris/boy.html');
     </script>
     <script src="/tetris/game.js"></script>
   </body>

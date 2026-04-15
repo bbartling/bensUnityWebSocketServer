@@ -11,6 +11,7 @@
       }
     </style>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="/arcade-room-pick.js"></script>
   </head>
   <body>
     <div id="app">
@@ -25,6 +26,7 @@
       <div id="ui">
         <div id="gameInfo"></div>
         <div id="brokerInfo"></div>
+        <div id="serveFirstInfo" class="serve-first-info" aria-live="polite"></div>
         <button type="button" id="statusBtn">Send ready ping</button>
         <div id="statusInfo"></div>
         <div id="connectionInfo"></div>
@@ -41,6 +43,9 @@
         accentLeft: '#6b8cff',
         accentRight: '#ff6b8b',
       };
+    </script>
+    <script>
+      window.ArcadeRoom && window.ArcadeRoom.rewritePartnerLinks('pong', '/pong/man.html', '/pong/boy.html');
     </script>
     <script src="/pong/pong.js"></script>
   </body>

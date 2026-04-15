@@ -11,6 +11,7 @@
       }
     </style>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="/arcade-room-pick.js"></script>
   </head>
   <body>
     <div id="app">
@@ -42,6 +43,9 @@
         accentLeft: '#6b8cff',
         accentRight: '#ff6b8b',
       };
+    </script>
+    <script>
+      window.ArcadeRoom && window.ArcadeRoom.rewritePartnerLinks('tictactoe', '/tictactoe/man.html', '/tictactoe/boy.html');
     </script>
     <script src="/tictactoe/tictactoe.js"></script>
   </body>

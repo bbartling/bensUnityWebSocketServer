@@ -11,6 +11,29 @@
     return;
   }
 
+  const urlParams = new URLSearchParams(window.location.search);
+  /** Console diagnostics for mid-air / two-player overlap bugs — add ?debug=1 or ?tetris=1 to the URL. */
+  const TETRIS_DEBUG =
+    urlParams.get('debug') === '1' ||
+    urlParams.get('tetris') === '1' ||
+    urlParams.get('tetrisDebug') === '1';
+
+  function tlog() {
+    if (!TETRIS_DEBUG) {
+      return;
+    }
+    const args = Array.prototype.slice.call(arguments);
+    args.unshift('[TetrisDebug]');
+    console.log.apply(console, args);
+  }
+
+  if (TETRIS_DEBUG) {
+    console.log(
+      '[TetrisDebug] enabled — gravity uses collideLocked (board only); moves use collideAll (+ partner piece). ' +
+        'If pieces overlap but do not lock, look for "overlap partner active" lines.',
+    );
+  }
+
   const COLS = 24;
   const ROWS = 20;
   let BLOCK_SIZE = 25;
@@ -126,6 +149,12 @@
     }
 
     merge() {
+      if (TETRIS_DEBUG) {
+        tlog('merge → board', this.playerId, {
+          type: this.piece.type,
+          pos: { x: this.piece.pos.x, y: this.piece.pos.y },
+        });
+      }
       this.piece.matrix.forEach((row, y) => {
         row.forEach((value, x) => {
           if (value !== 0) {
@@ -197,6 +226,8 @@
 
     /** Drop straight down onto locked cells only (ignore partner ghost). */
     settleOntoBoard() {
+      const y0 = this.piece.pos.y;
+      let steps = 0;
       let moved = false;
       while (true) {
         const next = { x: this.piece.pos.x, y: this.piece.pos.y + 1 };
@@ -204,7 +235,16 @@
           break;
         }
         this.piece.pos.y++;
+        steps++;
         moved = true;
+      }
+      if (TETRIS_DEBUG && moved) {
+        tlog('settleOntoBoard (after remote state)', this.playerId, {
+          fromY: y0,
+          toY: this.piece.pos.y,
+          cellsFallen: steps,
+          note: 'Uses collideLocked only — partner falling piece is not ground',
+        });
       }
       if (moved) {
         publishState();
@@ -229,8 +269,49 @@
     }
 
     dropPiece() {
+      const yBefore = this.piece.pos.y;
+      const oneDownLocked = this.collideLocked(
+        { x: this.piece.pos.x, y: this.piece.pos.y + 1 },
+        this.piece.matrix,
+      );
+      const oneDownAll = this.collideAll(
+        { x: this.piece.pos.x, y: this.piece.pos.y + 1 },
+        this.piece.matrix,
+      );
       this.piece.pos.y++;
-      if (this.collideLocked()) {
+      const hitLocked = this.collideLocked();
+      if (TETRIS_DEBUG) {
+        const now = performance.now();
+        const overlapRemote = !hitLocked && this.collideAll();
+        if (overlapRemote) {
+          if (!this._lastOverlapLog || now - this._lastOverlapLog > 400) {
+            this._lastOverlapLog = now;
+            tlog(
+              'OVERLAP partner active piece — collideAll=true, collideLocked=false. ' +
+                'Gravity ignores partner ghost; piece keeps falling until locked cells below.',
+              this.playerId,
+              {
+                yBefore,
+                yAfter: this.piece.pos.y,
+                oneDownLocked,
+                oneDownAll,
+                pos: { x: this.piece.pos.x, y: this.piece.pos.y },
+              },
+            );
+          }
+        } else if (!this._lastDropLog || now - this._lastDropLog > 300) {
+          this._lastDropLog = now;
+          tlog('dropPiece', this.playerId, {
+            yBefore,
+            yAfter: this.piece.pos.y,
+            oneDownLocked,
+            oneDownAll,
+            hitLockedAfterStep: hitLocked,
+            hasRemotePiece: !!this.remotePiece,
+          });
+        }
+      }
+      if (hitLocked) {
         this.piece.pos.y--;
         this.merge();
         this.clearLines();
@@ -374,19 +455,21 @@
     }
   }
 
-  let gameID = cfg.gameId || 'bens_arcade';
+  let gameID =
+    typeof window.ArcadeRoom !== 'undefined' && window.ArcadeRoom.getRoomId
+      ? window.ArcadeRoom.getRoomId('tetris')
+      : cfg.gameId || 'bens_arcade';
   let playerID = cfg.localId;
 
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('game')) {
-    gameID = params.get('game');
+  if (typeof window.ArcadeRoom === 'undefined' && urlParams.get('game')) {
+    gameID = urlParams.get('game');
   }
 
   /** Eclipse Mosquitto public test broker (browser WebSocket over TLS). */
   const BROKER_URL = 'wss://test.mosquitto.org:8081';
 
   document.getElementById('gameInfo').innerHTML =
-    `GAME: <span class="highlight">${gameID}</span> · YOU: <span class="highlight">${playerID}</span>`;
+    `ROOM: <span class="highlight">${gameID}</span> · YOU: <span class="highlight">${playerID}</span>`;
   document.getElementById('brokerInfo').innerHTML =
     `MQTT WS: <span class="highlight">${BROKER_URL}</span>`;
 
@@ -540,6 +623,18 @@
           const data = JSON.parse(message.toString());
           remoteScore = typeof data.score === 'number' ? data.score : 0;
           remoteLines = typeof data.linesTotal === 'number' ? data.linesTotal : 0;
+          if (TETRIS_DEBUG) {
+            const now = Date.now();
+            if (!game._lastMqttLog || now - game._lastMqttLog > 450) {
+              game._lastMqttLog = now;
+              tlog('MQTT state', sender, {
+                partnerPiece: data.piece
+                  ? { type: data.piece.type, pos: data.piece.pos }
+                  : null,
+                thenRemoteLocksAndSettleOntoBoard: true,
+              });
+            }
+          }
           game.remotePiece = data.piece;
           applyRemoteLocks(game, sender, data.board);
           updateTeamScore();
