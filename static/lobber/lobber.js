@@ -1044,189 +1044,6 @@
     return true;
   }
 
-  /** Same-kind touching pieces merge into one body (custom levels: compiled in play test only). */
-  const MORPH_KINDS = ['metal', 'lava', 'vine', 'wood', 'stone', 'villain'];
-
-  /** Max gap (world px) for merge — only true adjacency / tiny snap error, not wide air gaps. */
-  const MERGE_GAP_SLOP = 5;
-
-  /** True if rects overlap or are within `gapSlop` world units on an axis (touching / micro-gap only). */
-  function rectsMergeChainable(a, b, gapSlop) {
-    const s = gapSlop;
-    return !(a.x + a.w < b.x - s || b.x + b.w < a.x - s || a.y + a.h < b.y - s || b.y + b.h < a.y - s);
-  }
-
-  function mergedMorphPiece(kind, minX, minY, maxX, maxY, hpSum, ptsSum, emoji) {
-    const w = Math.max(4, maxX - minX);
-    const h = Math.max(4, maxY - minY);
-    if (kind === 'metal') {
-      return metalRail(allocBuilderId(), minX, minY, w, h);
-    }
-    if (kind === 'lava') {
-      return lavaBar(allocBuilderId(), minX, minY, w, h);
-    }
-    if (kind === 'vine') {
-      return vineHang(allocBuilderId(), minX, minY, w, h);
-    }
-    if (kind === 'wood') {
-      return tower(
-        allocBuilderId(),
-        minX,
-        minY,
-        w,
-        h,
-        Math.max(1, hpSum | 0),
-        'wood',
-        Math.max(0, ptsSum | 0),
-        emoji || '',
-      );
-    }
-    if (kind === 'stone') {
-      return tower(
-        allocBuilderId(),
-        minX,
-        minY,
-        w,
-        h,
-        Math.max(1, hpSum | 0),
-        'stone',
-        Math.max(0, ptsSum | 0),
-        emoji || '',
-      );
-    }
-    if (kind === 'villain') {
-      return tower(
-        allocBuilderId(),
-        minX,
-        minY,
-        w,
-        h,
-        Math.max(1, hpSum | 0),
-        'villain',
-        Math.max(0, ptsSum | 0),
-        emoji || buildVillainEmoji,
-      );
-    }
-    return null;
-  }
-
-  /** Union touching / overlapping same-kind morph pieces into one solid (erase removes whole morph). */
-  function mergeOnePass(kind) {
-    if (MORPH_KINDS.indexOf(kind) < 0) {
-      return false;
-    }
-    const idxs = [];
-    for (let i = 0; i < towers.length; i++) {
-      const tk = towers[i].kind;
-      const match = kind === 'metal' ? isMetalKind(tk) : tk === kind;
-      if (match && towers[i].hp > 0) {
-        idxs.push(i);
-      }
-    }
-    if (idxs.length < 2) {
-      return false;
-    }
-    const n = idxs.length;
-    const parent = [];
-    for (let i = 0; i < n; i++) {
-      parent[i] = i;
-    }
-    function find(u) {
-      return parent[u] === u ? u : (parent[u] = find(parent[u]));
-    }
-    function unite(u, v) {
-      const ru = find(u);
-      const rv = find(v);
-      if (ru !== rv) {
-        parent[rv] = ru;
-      }
-    }
-    for (let a = 0; a < n; a++) {
-      const ta = towers[idxs[a]];
-      for (let b = a + 1; b < n; b++) {
-        const tb = towers[idxs[b]];
-        if (rectsMergeChainable(ta, tb, MERGE_GAP_SLOP)) {
-          unite(a, b);
-        }
-      }
-    }
-    const groups = new Map();
-    for (let i = 0; i < n; i++) {
-      const r = find(i);
-      if (!groups.has(r)) {
-        groups.set(r, []);
-      }
-      groups.get(r).push(i);
-    }
-    const removeIdx = new Set();
-    const additions = [];
-    for (const [, members] of groups) {
-      if (members.length < 2) {
-        continue;
-      }
-      let minX = 1e9;
-      let minY = 1e9;
-      let maxX = -1e9;
-      let maxY = -1e9;
-      let hpSum = 0;
-      let ptsSum = 0;
-      let emoji = '';
-      for (const m of members) {
-        const t = towers[idxs[m]];
-        minX = Math.min(minX, t.x);
-        minY = Math.min(minY, t.y);
-        maxX = Math.max(maxX, t.x + t.w);
-        maxY = Math.max(maxY, t.y + t.h);
-        hpSum += t.hp | 0;
-        ptsSum += t.pts | 0;
-        if (!emoji && t.emoji) {
-          emoji = t.emoji;
-        }
-        removeIdx.add(idxs[m]);
-      }
-      const nw = mergedMorphPiece(kind, minX, minY, maxX, maxY, hpSum, ptsSum, emoji);
-      if (nw) {
-        additions.push(nw);
-      }
-    }
-    if (!additions.length) {
-      return false;
-    }
-    const next = [];
-    for (let i = 0; i < towers.length; i++) {
-      if (!removeIdx.has(i)) {
-        next.push(towers[i]);
-      }
-    }
-    for (let j = 0; j < additions.length; j++) {
-      next.push(additions[j]);
-    }
-    towers = next;
-    return true;
-  }
-
-  function mergeMorphableKinds() {
-    if (!useCustomLevel || editorMode !== 'test') {
-      return;
-    }
-    for (let i = 0; i < towers.length; i++) {
-      if (towers[i].kind === 'beam') {
-        towers[i].kind = 'metal';
-      }
-    }
-    let guard = 0;
-    let changed = true;
-    while (changed && guard < 24) {
-      guard += 1;
-      changed = false;
-      for (let k = 0; k < MORPH_KINDS.length; k++) {
-        if (mergeOnePass(MORPH_KINDS[k])) {
-          changed = true;
-        }
-      }
-    }
-  }
-
   function placeStampAt(wx, wy) {
     const x = snapBuild(wx);
     const y = snapBuild(wy);
@@ -1348,7 +1165,6 @@
     }
     builderTestSnapshot = snapshotCustomLevel();
     editorMode = 'test';
-    mergeMorphableKinds();
     resetCourseHp();
     score = 0;
     debris = [];
@@ -1621,7 +1437,7 @@
       '<label class="lobber-builder-check"><input type="checkbox" id="lobberBuilderSnap" checked /> Snap grid</label>',
       '</div>',
       '<div class="lobber-builder-tools">',
-      '<span class="lobber-builder-hint">Mario-style builder: one-tile pieces on a shared grid · No-build over launcher (corner zone + sling pocket) · Metal is indestructible in play · Same-kind tiles merge only when touching (Play test) · Erase clears a merged piece</span>',
+      '<span class="lobber-builder-hint">Mario-style builder: one-tile pieces on a shared grid · No-build over launcher (corner zone + sling pocket) · Metal is indestructible in play · Tiles stay individual in Play test and edit mode · Erase clears one tile</span>',
       '<button type="button" class="lobber-tool" data-build-tool="metal" title="Solid metal — indestructible, bouncy">Metal</button>',
       '<button type="button" class="lobber-tool" data-build-tool="wood">Wood</button>',
       '<button type="button" class="lobber-tool" data-build-tool="stone">Stone</button>',
@@ -2138,10 +1954,12 @@
    * Used so fast shots cannot tunnel through wide merged planks in one frame.
    */
   function segmentEnterMinkowskiAabb(ox, oy, nx, ny, bx, by, bw, bh, er) {
-    const xmin = bx - er;
-    const xmax = bx + bw + er;
-    const ymin = by - er;
-    const ymax = by + bh + er;
+    // Raycast-only seam inflation so adjacent tiles form a continuous CCD wall.
+    const seamEps = 0.75;
+    const xmin = bx - er - seamEps;
+    const xmax = bx + bw + er + seamEps;
+    const ymin = by - er - seamEps;
+    const ymax = by + bh + er + seamEps;
     const dx = nx - ox;
     const dy = ny - oy;
     function axisClip(o, d, lo, hi) {
@@ -2385,13 +2203,15 @@
     }
   }
 
-  function contactNormalForRect(p, b, er) {
+function contactNormalForRect(p, b, er) {
     const px = p.x;
     const py = p.y;
     const bx = b.x;
     const by = b.y;
     const bw = b.w;
     const bh = b.h;
+    
+    // Find closest point on the rectangle to the circle center
     const cx = Math.max(bx, Math.min(px, bx + bw));
     const cy = Math.max(by, Math.min(py, by + bh));
     const dx = px - cx;
@@ -2400,38 +2220,18 @@
     const vx = p.vx || 0;
     const vy = p.vy || 0;
     const dEps = 1e-8;
+    
+    // If the circle center is outside the rect, use standard collision normal
     if (d2 > dEps) {
       const d = Math.sqrt(d2);
       let nx = dx / d;
       let ny = dy / d;
       let pen = Math.max(0, er - d);
-      // Near a rect corner, dx/dy is unstable; bias to a cardinal axis using velocity (into surface).
-      const cornerBlend = d < er * 0.28 && Math.abs(Math.abs(dx) - Math.abs(dy)) < d * 0.42;
-      if (cornerBlend) {
-        const card = [
-          { nx: -1, ny: 0 },
-          { nx: 1, ny: 0 },
-          { nx: 0, ny: -1 },
-          { nx: 0, ny: 1 },
-        ];
-        let best = card[0];
-        let bestDot = best.nx * vx + best.ny * vy;
-        for (let i = 1; i < 4; i++) {
-          const c = card[i];
-          const dot = c.nx * vx + c.ny * vy;
-          if (dot < bestDot - 1e-5) {
-            best = c;
-            bestDot = dot;
-          }
-        }
-        if (bestDot < -0.04) {
-          nx = best.nx;
-          ny = best.ny;
-          pen = Math.max(pen, er - d + er * 0.06);
-        }
-      }
       return { nx, ny, pen };
     }
+    
+    // Fallback: If the circle center is somehow inside the rect (deep penetration),
+    // treat it as a flat wall and push it out the shallowest edge.
     const left = Math.abs(px - bx);
     const right = Math.abs(bx + bw - px);
     const top = Math.abs(py - by);
@@ -2444,9 +2244,11 @@
       { nx: 0, ny: -1, dist: top },
       { nx: 0, ny: 1, dist: bot },
     ];
+    
     const near = edges.filter((e) => e.dist <= minEdge + tieSlop);
     let pick = near[0] || edges[0];
     let pickDot = pick.nx * vx + pick.ny * vy;
+    
     for (let i = 1; i < near.length; i++) {
       const e = near[i];
       const dot = e.nx * vx + e.ny * vy;
