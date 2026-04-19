@@ -13,12 +13,14 @@
     <div id="app">
       <header><h1>MQTT MAHJONG MATCH</h1><div class="sub">Man - host - flip matching pairs</div></header>
       <div id="boardWrap"><canvas id="gameCanvas" width="460" height="420"></canvas></div>
-      <div id="score">TURN: MAN - MAN 0 - BOY 0</div>
+      <div id="turnBadge" class="turn-badge turn-man">TURN: MAN</div>
+      <div id="score">MAN 0 - BOY 0</div>
       <div id="ui">
         <div id="gameInfo"></div>
         <div id="brokerInfo"></div>
         <button type="button" id="statusBtn">Send ready ping</button>
         <button type="button" id="newGameBtn">New game</button>
+        <label class="lock-links"><input id="lockLinksToggle" type="checkbox" checked /> Lock in this room</label>
         <div id="statusInfo"></div>
         <div id="connectionInfo"></div>
         <p class="nav-other"><a href="/">Dashboard</a> · <a href="/mahjong/">Mahjong seats</a> · Open <a href="/mahjong/boy.html">Boy</a> in another window.</p>
