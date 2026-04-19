@@ -1,6 +1,6 @@
 # bensUnityWebSocketServer
 
-FastAPI app that serves a small **MQTT Arcade** dashboard plus static HTML clients for **co-op Tetris**, **two-seat Pong**, and **two-seat Tic Tac Toe**. Games use the browser MQTT.js client against the public **Eclipse Mosquitto test broker** (`wss://test.mosquitto.org:8081`). There is **no Unity** and **no Python WebSocket game relay** anymore.
+FastAPI app that serves a small **MQTT Arcade** dashboard plus static HTML clients for **co-op Tetris**, **two-seat Pong**, **two-seat Tic Tac Toe**, and **two-seat Mahjong Match**. Games use the browser MQTT.js client against the public **Eclipse Mosquitto test broker** (`wss://test.mosquitto.org:8081`). There is **no Unity** and **no Python WebSocket game relay** anymore.
 
 ## Seats
 
@@ -9,9 +9,10 @@ FastAPI app that serves a small **MQTT Arcade** dashboard plus static HTML clien
 | Tetris | `/tetris/man.html` (spawn right) | `/tetris/boy.html` (spawn left) |
 | Pong   | `/pong/man.html` (host, left paddle, opening-serve option) | `/pong/boy.html` (right paddle) |
 | Tic Tac Toe | `/tictactoe/man.html` (host, X) | `/tictactoe/boy.html` (O) |
+| Mahjong Match | `/mahjong/man.html` (host) | `/mahjong/boy.html` |
 | Emoji Lobber | `/lobber/game.html` (single-player) | — |
 
-**MQTT private rooms (Tetris, Pong, Tic Tac Toe)** — On each game’s **index** page (`/tetris/`, `/pong/`, `/tictactoe/`), pick a silly two-word room (or type your own). Both seats open **Man** and **Boy** with the same `?room=slug` so you only match each other. Default room `bens_arcade` is used if you skip the picker. Room choice is stored in `sessionStorage` per game.
+**MQTT private rooms (Tetris, Pong, Tic Tac Toe, Mahjong Match)** — On each game’s **index** page (`/tetris/`, `/pong/`, `/tictactoe/`, `/mahjong/`), pick a silly two-word room (or type your own). Both seats open **Man** and **Boy** with the same `?room=slug` so you only match each other. Default room `bens_arcade` is used if you skip the picker. Room choice is stored in `sessionStorage` per game.
 
 **Emoji Lobber** — Single-player Angry Birds–style pull & release, spinning projectile, destructible **wood** / **stone** + **villain emoji** targets, **lava** (shot ends on touch), **pyramid** layouts on harder stages, per-hero powers (human-face picker). **15 levels** (Easy → Impossible); pick any stage before locking in. No MQTT or network. Optional **`?debug=1`** for verbose console logs.
 

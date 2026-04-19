@@ -16,6 +16,9 @@ SERVED_HTML_CHECK_PAGES: list[str] = [
     "/tictactoe/man.html",
     "/tictactoe/boy.html",
     "/tictactoe/index.html",
+    "/mahjong/man.html",
+    "/mahjong/boy.html",
+    "/mahjong/index.html",
 ]
 
 # Playwright loads each URL; console + page errors fail (check_browser_console.py).
@@ -50,12 +53,20 @@ REQUIRED_HTML_SNIPPETS: dict[str, tuple[str, ...]] = {
         "/arcade-room-pick.css",
         "ArcadeRoom",
     ),
+    "/mahjong/index.html": (
+        'id="arcadeRoomPick"',
+        "/arcade-room-pick.js",
+        "/arcade-room-pick.css",
+        "ArcadeRoom",
+    ),
     "/pong/man.html": ("/arcade-room-pick.js", "rewritePartnerLinks"),
     "/pong/boy.html": ("/arcade-room-pick.js", "rewritePartnerLinks"),
     "/tetris/man.html": ("/arcade-room-pick.js", "getRoomId", "rewritePartnerLinks"),
     "/tetris/boy.html": ("/arcade-room-pick.js", "getRoomId", "rewritePartnerLinks"),
     "/tictactoe/man.html": ("/arcade-room-pick.js", "rewritePartnerLinks"),
     "/tictactoe/boy.html": ("/arcade-room-pick.js", "rewritePartnerLinks"),
+    "/mahjong/man.html": ("/arcade-room-pick.js", "rewritePartnerLinks"),
+    "/mahjong/boy.html": ("/arcade-room-pick.js", "rewritePartnerLinks"),
 }
 
 # Playwright: after load, pick a silly room and assert Man/Boy links share ?room= (check_browser_console.py).
@@ -63,6 +74,7 @@ ROOM_PICK_BROWSER_FUNCTIONAL_PAGES: tuple[str, ...] = (
     "/pong/index.html",
     "/tetris/index.html",
     "/tictactoe/index.html",
+    "/mahjong/index.html",
 )
 
 # Static assets for the room feature (also pulled from index HTML; listed for explicit self-check).

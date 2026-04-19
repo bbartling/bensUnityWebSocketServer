@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>MQTT Mahjong Match - Boy</title>
+    <link rel="stylesheet" href="/mahjong/mahjong.css" />
+    <style>:root { --accent: #ff6b8b; }</style>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="/arcade-room-pick.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <header><h1>MQTT MAHJONG MATCH</h1><div class="sub">Boy - guest - flip matching pairs</div></header>
+      <div id="boardWrap"><canvas id="gameCanvas" width="460" height="420"></canvas></div>
+      <div id="score">TURN: MAN - MAN 0 - BOY 0</div>
+      <div id="ui">
+        <div id="gameInfo"></div>
+        <div id="brokerInfo"></div>
+        <button type="button" id="statusBtn">Send ready ping</button>
+        <button type="button" id="newGameBtn">Request new game</button>
+        <div id="statusInfo"></div>
+        <div id="connectionInfo"></div>
+        <p class="nav-other"><a href="/">Dashboard</a> · <a href="/mahjong/">Mahjong seats</a> · Open <a href="/mahjong/man.html">Man</a> in another window.</p>
+      </div>
+    </div>
+    <script>
+      window.MAHJONG_CONFIG = { role: 'guest', localLabel: 'Boy', remoteLabel: 'Man', accentLeft: '#6b8cff', accentRight: '#ff6b8b' };
+      window.ArcadeRoom && window.ArcadeRoom.rewritePartnerLinks('mahjong', '/mahjong/man.html', '/mahjong/boy.html');
+    </script>
+    <script src="/mahjong/mahjong.js"></script>
+  </body>
+</html>
