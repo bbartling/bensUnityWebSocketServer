@@ -1067,6 +1067,8 @@
     dragCur = { x: SLING.x, y: SLING.y };
     projectile = null;
     dragging = false;
+    shotsThisLevel = 0;
+    pendingBuildFailLoss = false;
     phase = editorMode === 'test' ? 'aim' : 'build';
     refreshGameInfo();
   }
@@ -1145,11 +1147,20 @@
       piece.y >= 10 &&
       piece.x >= 6 &&
       piece.x + piece.w <= WORLD_W - 6 &&
-      piece.y + piece.h <= WORLD_H - 8
+      piece.y + piece.h <= GROUND_Y - 2
     ) {
       if (pieceOverlapsLauncherNoBuild(piece)) {
         turnLine.textContent = 'Cannot build on or over the launcher (reserved corner + slingshot pocket).';
         return;
+      }
+      for (const t of towers) {
+        if (t.hp <= 0) {
+          continue;
+        }
+        if (rectsOverlapWorld(piece, t)) {
+          turnLine.textContent = 'Cannot place a part inside or on top of another part.';
+          return;
+        }
       }
       pushBuilderUndo(`place ${buildTool}`);
       towers.push(piece);
@@ -1235,6 +1246,8 @@
     resetCourseHp();
     score = 0;
     debris = [];
+    shotsThisLevel = 0;
+    pendingBuildFailLoss = false;
     setScoreText();
     phase = 'aim';
     dragging = false;
@@ -1385,11 +1398,14 @@
         nx = Math.max(4, Math.min(WORLD_W - b.w - 4, nx));
         ny = Math.max(4, Math.min(GROUND_Y - b.h - 2, ny));
         const trial = { x: nx, y: ny, w: b.w, h: b.h };
-        if (!pieceOverlapsLauncherNoBuild(trial)) {
+        const overlapsOther = towers.some((t) => t.id !== b.id && t.hp > 0 && rectsOverlapWorld(trial, t));
+        if (!pieceOverlapsLauncherNoBuild(trial) && !overlapsOther) {
           b.x = nx;
           b.y = ny;
         } else {
-          turnLine.textContent = 'Cannot move parts onto the launcher (reserved corner + slingshot pocket).';
+          turnLine.textContent = overlapsOther
+            ? 'Cannot move a part into another part.'
+            : 'Cannot move parts onto the launcher (reserved corner + slingshot pocket).';
         }
       }
     }
@@ -1594,6 +1610,8 @@
     SLING = levelSling(L);
     towers = cloneTowers(towersForLevel(idx));
     dragCur = { x: SLING.x, y: SLING.y };
+    shotsThisLevel = 0;
+    pendingBuildFailLoss = false;
     dlog('loadLevel', L.name, { worldW: WORLD_W, worldH: WORLD_H, GROUND_Y, SLING, blocks: towers.length });
     if (LOBBER_DEBUG) {
       const rad = projectileRadiusWorld();
@@ -1645,6 +1663,8 @@
   let turn = 'Man';
   let phase = 'pick';
   let shotSeq = 0;
+  let shotsThisLevel = 0;
+  let pendingBuildFailLoss = false;
 
   let localEmoji = null;
   let localLocked = false;
@@ -1936,6 +1956,7 @@
   }
 
   function fireShot(vx, vy, emoji) {
+    shotsThisLevel += 1;
     shotSeq += 1;
     dlog('shot', {
       seq: shotSeq,
@@ -2210,6 +2231,9 @@
     if (base.hp <= 0) {
       addScoreForBreak(base);
       spawnDebris(base.x + base.w / 2, base.y + base.h / 2, base.emoji || '💥');
+      if (editorMode === 'test' && useCustomLevel && base.kind === 'villain' && shotsThisLevel < 1) {
+        pendingBuildFailLoss = true;
+      }
     }
   }
 
@@ -2219,7 +2243,7 @@
   }
 
   function tickStructureGravity(dt) {
-    if (!(editorMode === 'edit' || phase === 'flight' || phase === 'aim' || editorMode === 'test')) {
+    if (!(phase === 'flight' || phase === 'aim' || editorMode === 'test')) {
       return;
     }
     const movers = towers
@@ -2268,6 +2292,15 @@
         b.vx = 0;
       }
       b.x = Math.max(2, Math.min(WORLD_W - b.w - 2, b.x));
+    }
+    if (pendingBuildFailLoss) {
+      pendingBuildFailLoss = false;
+      if (editorMode === 'test' && builderTestSnapshot) {
+        stopTestCustom();
+        const msg = 'Build failed: a villain was crushed by gravity before launch. You lose this play test.';
+        turnLine.textContent = msg;
+        window.alert(msg);
+      }
     }
   }
 
