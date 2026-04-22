@@ -2130,33 +2130,57 @@
     return Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
   }
 
-  function structureSupportY(piece) {
+  function structureSupportInfo(piece) {
     const bottom = piece.y + piece.h;
-    let best = GROUND_Y - piece.h;
+    let supportY = GROUND_Y - piece.h;
+    let supportPiece = null;
+    let overlap = piece.w;
+    let centerOffset = 0;
     for (const s of towers) {
       if (s.id === piece.id || s.hp <= 0 || !canSupportStructure(s.kind)) {
         continue;
       }
-      if (overlapSpanX(piece, s) < Math.max(4, Math.min(piece.w, s.w) * 0.22)) {
+      const ov = overlapSpanX(piece, s);
+      if (ov < Math.max(4, Math.min(piece.w, s.w) * 0.22)) {
         continue;
       }
       if (s.y + 1 < bottom - 2) {
         continue;
       }
       const topY = s.y - piece.h;
-      if (topY >= piece.y - 3 && topY < best) {
-        best = topY;
+      if (topY >= piece.y - 3 && topY < supportY) {
+        supportY = topY;
+        supportPiece = s;
+        overlap = ov;
+        centerOffset = piece.x + piece.w * 0.5 - (s.x + s.w * 0.5);
       }
     }
-    return best;
+    if (!supportPiece) {
+      overlap = piece.w;
+      centerOffset = 0;
+    }
+    return { supportY, supportPiece, overlap, centerOffset };
+  }
+
+  function structureSupportY(piece) {
+    return structureSupportInfo(piece).supportY;
+  }
+
+  function perchedUnstable(piece, info) {
+    if (!info || !info.supportPiece) {
+      return false;
+    }
+    const minStableOverlap = Math.max(6, piece.w * 0.48);
+    const maxCenterOffset = Math.max(3, piece.w * 0.24);
+    return info.overlap < minStableOverlap || Math.abs(info.centerOffset) > maxCenterOffset;
   }
 
   function structureIsResting(piece) {
     if (!isStructuralKind(piece.kind) || piece.hp <= 0) {
       return true;
     }
-    const y = structureSupportY(piece);
-    return piece.y >= y - STRUCT_REST_EPS;
+    const info = structureSupportInfo(piece);
+    return piece.y >= info.supportY - STRUCT_REST_EPS && !perchedUnstable(piece, info);
   }
 
   function structureImpactDamage(mover, base, vyImpact) {
@@ -2190,26 +2214,8 @@
   }
 
   function findStructureLandingTarget(piece) {
-    const bottom = piece.y + piece.h;
-    let supportY = GROUND_Y - piece.h;
-    let supportPiece = null;
-    for (const s of towers) {
-      if (s.id === piece.id || s.hp <= 0 || !canSupportStructure(s.kind)) {
-        continue;
-      }
-      if (overlapSpanX(piece, s) < Math.max(4, Math.min(piece.w, s.w) * 0.22)) {
-        continue;
-      }
-      if (s.y + 1 < bottom - 2) {
-        continue;
-      }
-      const topY = s.y - piece.h;
-      if (topY >= piece.y - 3 && topY < supportY) {
-        supportY = topY;
-        supportPiece = s;
-      }
-    }
-    return { supportY, supportPiece };
+    const info = structureSupportInfo(piece);
+    return { supportY: info.supportY, supportPiece: info.supportPiece, overlap: info.overlap, centerOffset: info.centerOffset };
   }
 
   function tickStructureGravity(dt) {
@@ -2236,15 +2242,32 @@
       const landing = findStructureLandingTarget(b);
       if (wantY >= landing.supportY - STRUCT_REST_EPS) {
         b.y = landing.supportY;
-        b.falling = false;
-        b.vy = 0;
-        b.settledFrames = 1;
-        if (landing.supportPiece) {
+        if (landing.supportPiece && perchedUnstable(b, landing)) {
+          // Edge-overhang support causes a topple drift instead of perfectly sticking.
+          const driftDir = landing.centerOffset >= 0 ? 1 : -1;
+          b.vx = Math.max(-4.4, Math.min(4.4, b.vx + driftDir * 0.24));
+          b.vy = Math.max(0.6, startVy * 0.35);
+          b.falling = true;
+          b.settledFrames = 0;
+        } else {
+          b.falling = false;
+          b.vy = 0;
+          b.vx *= 0.72;
+          b.settledFrames = 1;
+        }
+        if (landing.supportPiece && startVy > 0.35) {
           structureImpactDamage(b, landing.supportPiece, startVy);
         }
       } else {
         b.y = wantY;
       }
+      if (Math.abs(b.vx) > 0.01) {
+        b.x += b.vx * dt * 60;
+        b.vx *= 0.95;
+      } else {
+        b.vx = 0;
+      }
+      b.x = Math.max(2, Math.min(WORLD_W - b.w - 2, b.x));
     }
   }
 
@@ -2278,6 +2301,8 @@
   function resolveHits(p) {
     const pr = p.power || defaultPower();
     const er = projectileRadiusWorld();
+    let strongestSolidCn = null;
+    let strongestSolidPen = 0;
     for (const b of towers) {
       if (b.hp > 0 && b.kind === 'lava' && circleRectHit(p.x, p.y, er, b)) {
         spawnDebris(p.x, p.y, '🔥');
@@ -2363,6 +2388,10 @@
         continue;
       }
       const cn = contactNormalForRect(p, b, er);
+      if (cn.pen > strongestSolidPen && b.kind !== 'vine') {
+        strongestSolidPen = cn.pen;
+        strongestSolidCn = cn;
+      }
       p.x += cn.nx * (cn.pen + 0.16) * 0.55;
       p.y += cn.ny * (cn.pen + 0.16) * 0.55;
       const vn = p.vx * cn.nx + p.vy * cn.ny;
@@ -2412,6 +2441,25 @@
         }
         setScoreText();
       }
+    }
+    if (strongestSolidCn) {
+      const vn = p.vx * strongestSolidCn.nx + p.vy * strongestSolidCn.ny;
+      const spd = Math.hypot(p.vx, p.vy);
+      if (vn > -0.12 || (strongestSolidPen > 0.045 && spd < 2.1)) {
+        p.vx += strongestSolidCn.nx * 1.25;
+        p.vy += strongestSolidCn.ny * 1.25 - 0.08;
+        p.spin = (p.spin || SPIN_BASE) * 0.9;
+        p._stickFrames = (p._stickFrames || 0) + 1;
+      } else {
+        p._stickFrames = 0;
+      }
+      if ((p._stickFrames || 0) > 12) {
+        p.vx += strongestSolidCn.nx * 1.8;
+        p.vy += strongestSolidCn.ny * 1.5 - 0.12;
+        p._stickFrames = 0;
+      }
+    } else {
+      p._stickFrames = 0;
     }
   }
 
