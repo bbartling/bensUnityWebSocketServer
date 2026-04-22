@@ -27,6 +27,13 @@ BROWSER_CONSOLE_CHECK_PAGES: list[str] = list(SERVED_HTML_CHECK_PAGES)
 # Console `warning` messages containing any of these substrings (case-insensitive) do not fail the run.
 ALLOWED_CONSOLE_WARNING_SUBSTRINGS: tuple[str, ...] = ()
 
+# Console `error` messages containing any of these substrings (case-insensitive) do not fail the run.
+# Keep this limited to known external/transient infrastructure issues.
+ALLOWED_CONSOLE_ERROR_SUBSTRINGS: tuple[str, ...] = (
+    "websocket connection to 'wss://test.mosquitto.org:8081/' failed",
+    "connection closed before receiving a handshake response",
+)
+
 # Required substrings (case-insensitive) per path for HTML contract / regression checks.
 REQUIRED_HTML_SNIPPETS: dict[str, tuple[str, ...]] = {
     "/lobber/game.html": (

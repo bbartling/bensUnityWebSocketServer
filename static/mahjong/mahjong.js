@@ -54,7 +54,7 @@
   }
 
   document.getElementById('gameInfo').innerHTML =
-    `ROOM: <span class="highlight">${GAME_ID}</span> · YOU: <span class="highlight">${cfg.localLabel}</span> · ROLE: <span class="highlight">${cfg.role}</span>`;
+    `ROOM: <span class="highlight">${GAME_ID}</span> ï¿½ YOU: <span class="highlight">${cfg.localLabel}</span> ï¿½ ROLE: <span class="highlight">${cfg.role}</span>`;
   document.getElementById('brokerInfo').innerHTML =
     `MQTT WS: <span class="highlight">${BROKER_URL}</span>`;
 
@@ -66,20 +66,20 @@
   const connectStart = Date.now();
   const connectionInfo = document.getElementById('connectionInfo');
   function updateConn() {
-    const b = localConnected ? 'BROKER OK' : localConnecting ? 'CONNECTING…' : 'OFFLINE';
+    const b = localConnected ? 'BROKER OK' : localConnecting ? 'CONNECTINGï¿½' : 'OFFLINE';
     const bc = localConnected ? '#7dffb3' : localConnecting ? '#ffe08a' : '#ff6b6b';
-    const p = partnerOk ? 'PARTNER LINKED' : partnerTrying ? 'WAITING…' : 'NO PARTNER';
+    const p = partnerOk ? 'PARTNER LINKED' : partnerTrying ? 'WAITINGï¿½' : 'NO PARTNER';
     const pc = partnerOk ? '#7dffb3' : partnerTrying ? '#ffe08a' : '#ff6b6b';
-    connectionInfo.innerHTML = `MQTT: <span style="color:${bc}">${b}</span> · PARTNER: <span style="color:${pc}">${p}</span>`;
+    connectionInfo.innerHTML = `MQTT: <span style="color:${bc}">${b}</span> ï¿½ PARTNER: <span style="color:${pc}">${p}</span>`;
   }
   updateConn();
 
-  let localStatus = '—';
-  let remoteStatus = '—';
+  let localStatus = 'ï¿½';
+  let remoteStatus = 'ï¿½';
   const statusBtn = document.getElementById('statusBtn');
   const statusInfo = document.getElementById('statusInfo');
   function updateStatusDisplay() {
-    statusInfo.textContent = `You: ${localStatus} · ${cfg.remoteLabel}: ${remoteStatus}`;
+    statusInfo.textContent = `You: ${localStatus} ï¿½ ${cfg.remoteLabel}: ${remoteStatus}`;
   }
   statusBtn.addEventListener('click', () => {
     localStatus = 'READY';
@@ -133,13 +133,13 @@
 
   function updateScoreText(s) {
     if (s.winner === 'Man') {
-      scoreEl.textContent = `MAN ${s.scoreMan} · BOY ${s.scoreBoy}`;
+      scoreEl.textContent = `MAN ${s.scoreMan} ï¿½ BOY ${s.scoreBoy}`;
     } else if (s.winner === 'Boy') {
-      scoreEl.textContent = `MAN ${s.scoreMan} · BOY ${s.scoreBoy}`;
+      scoreEl.textContent = `MAN ${s.scoreMan} ï¿½ BOY ${s.scoreBoy}`;
     } else if (s.winner === 'draw') {
-      scoreEl.textContent = `MAN ${s.scoreMan} · BOY ${s.scoreBoy}`;
+      scoreEl.textContent = `MAN ${s.scoreMan} ï¿½ BOY ${s.scoreBoy}`;
     } else {
-      scoreEl.textContent = `MAN ${s.scoreMan} · BOY ${s.scoreBoy}`;
+      scoreEl.textContent = `MAN ${s.scoreMan} ï¿½ BOY ${s.scoreBoy}`;
     }
     updateTurnBadge(s);
   }
@@ -332,7 +332,7 @@
         client.subscribe(`mahjong/${GAME_ID}/${HOST_ID}/state`);
         client.subscribe(`mahjong/${GAME_ID}/+/status`);
       }
-      if (localStatus !== '—') publishStatus(localStatus);
+      if (localStatus !== 'ï¿½') publishStatus(localStatus);
     });
     client.on('close', () => {
       localConnected = false;

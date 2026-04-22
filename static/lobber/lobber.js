@@ -148,9 +148,42 @@
   }
   const REST_FRICTION = 0.9;
   const BOUNCE_DAMP = 0.52;
+  const STRUCT_GRAVITY = 0.34;
+  const STRUCT_MAX_FALL = 10.5;
+  const STRUCT_REST_EPS = 0.45;
+  const STRUCT_IMPACT_MIN = 3.2;
 
   function tower(id, x, y, w, h, hp, kind, pts, emoji) {
     return { id, x, y, w, h, hp, kind, pts: pts || 0, emoji: emoji || '' };
+  }
+
+  function isStructuralKind(kind) {
+    return kind === 'wood' || kind === 'stone' || kind === 'villain';
+  }
+
+  function canSupportStructure(kind) {
+    if (kind === 'lava' || kind === 'vine') {
+      return false;
+    }
+    return isStructuralKind(kind) || isMetalKind(kind);
+  }
+
+  function ensureStructureState(b) {
+    if (!b) {
+      return;
+    }
+    if (typeof b.vx !== 'number') {
+      b.vx = 0;
+    }
+    if (typeof b.vy !== 'number') {
+      b.vy = 0;
+    }
+    if (typeof b.falling !== 'boolean') {
+      b.falling = false;
+    }
+    if (typeof b.settledFrames !== 'number') {
+      b.settledFrames = 0;
+    }
   }
 
   function isMetalKind(kind) {
@@ -2093,6 +2126,128 @@
     setScoreText();
   }
 
+  function overlapSpanX(a, b) {
+    return Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  }
+
+  function structureSupportY(piece) {
+    const bottom = piece.y + piece.h;
+    let best = GROUND_Y - piece.h;
+    for (const s of towers) {
+      if (s.id === piece.id || s.hp <= 0 || !canSupportStructure(s.kind)) {
+        continue;
+      }
+      if (overlapSpanX(piece, s) < Math.max(4, Math.min(piece.w, s.w) * 0.22)) {
+        continue;
+      }
+      if (s.y + 1 < bottom - 2) {
+        continue;
+      }
+      const topY = s.y - piece.h;
+      if (topY >= piece.y - 3 && topY < best) {
+        best = topY;
+      }
+    }
+    return best;
+  }
+
+  function structureIsResting(piece) {
+    if (!isStructuralKind(piece.kind) || piece.hp <= 0) {
+      return true;
+    }
+    const y = structureSupportY(piece);
+    return piece.y >= y - STRUCT_REST_EPS;
+  }
+
+  function structureImpactDamage(mover, base, vyImpact) {
+    if (!base || base.hp <= 0 || !isStructuralKind(base.kind)) {
+      return;
+    }
+    const speed = Math.abs(vyImpact || 0);
+    if (speed < STRUCT_IMPACT_MIN) {
+      return;
+    }
+    let dmg = 0;
+    if (speed >= 8.8) {
+      dmg = 3;
+    } else if (speed >= 6.4) {
+      dmg = 2;
+    } else {
+      dmg = 1;
+    }
+    if (mover.kind === 'stone') {
+      dmg += 1;
+    }
+    if (mover.kind === 'villain') {
+      dmg = Math.max(1, dmg - 1);
+    }
+    base.hp -= dmg;
+    beep(base.kind === 'villain' ? 430 : 240, 0.04);
+    if (base.hp <= 0) {
+      addScoreForBreak(base);
+      spawnDebris(base.x + base.w / 2, base.y + base.h / 2, base.emoji || '💥');
+    }
+  }
+
+  function findStructureLandingTarget(piece) {
+    const bottom = piece.y + piece.h;
+    let supportY = GROUND_Y - piece.h;
+    let supportPiece = null;
+    for (const s of towers) {
+      if (s.id === piece.id || s.hp <= 0 || !canSupportStructure(s.kind)) {
+        continue;
+      }
+      if (overlapSpanX(piece, s) < Math.max(4, Math.min(piece.w, s.w) * 0.22)) {
+        continue;
+      }
+      if (s.y + 1 < bottom - 2) {
+        continue;
+      }
+      const topY = s.y - piece.h;
+      if (topY >= piece.y - 3 && topY < supportY) {
+        supportY = topY;
+        supportPiece = s;
+      }
+    }
+    return { supportY, supportPiece };
+  }
+
+  function tickStructureGravity(dt) {
+    if (!(editorMode === 'edit' || phase === 'flight' || phase === 'aim' || editorMode === 'test')) {
+      return;
+    }
+    const movers = towers
+      .filter((b) => b.hp > 0 && isStructuralKind(b.kind))
+      .sort((a, b) => a.y + a.h - (b.y + b.h));
+    for (const b of movers) {
+      ensureStructureState(b);
+      const resting = structureIsResting(b);
+      if (resting && Math.abs(b.vy) < 0.05) {
+        b.falling = false;
+        b.vy = 0;
+        b.settledFrames += 1;
+        continue;
+      }
+      b.falling = true;
+      b.settledFrames = 0;
+      b.vy = Math.min(STRUCT_MAX_FALL, b.vy + STRUCT_GRAVITY * dt * 60);
+      const startVy = b.vy;
+      const wantY = b.y + b.vy * dt * 60;
+      const landing = findStructureLandingTarget(b);
+      if (wantY >= landing.supportY - STRUCT_REST_EPS) {
+        b.y = landing.supportY;
+        b.falling = false;
+        b.vy = 0;
+        b.settledFrames = 1;
+        if (landing.supportPiece) {
+          structureImpactDamage(b, landing.supportPiece, startVy);
+        }
+      } else {
+        b.y = wantY;
+      }
+    }
+  }
+
   /** Overlapping structural blocks + contact normal (for corner / stuck diagnosis). */
   function physicsSolidHitsSummary(p, er) {
     const hits = [];
@@ -2842,6 +2997,7 @@ function contactNormalForRect(p, b, er) {
     const dt = Math.min(0.045, (now - lastT) / 1000);
     lastT = now;
     tickFlight(dt);
+    tickStructureGravity(dt);
     tickDebris(dt);
     drawScene();
     requestAnimationFrame(frame);
