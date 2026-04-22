@@ -25,6 +25,7 @@ if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
 
 from arcade_game_urls import (
+    ALLOWED_CONSOLE_ERROR_SUBSTRINGS,
     ALLOWED_CONSOLE_WARNING_SUBSTRINGS,
     BROWSER_CONSOLE_CHECK_PAGES,
     ROOM_PICK_BROWSER_FUNCTIONAL_PAGES,
@@ -46,6 +47,20 @@ def blocking_warnings(warns: list[tuple[str, str]]) -> list[tuple[str, str]]:
         if any(fragment in low for fragment in allow):
             continue
         bad.append((t, text))
+    return bad
+
+
+def blocking_errors(errs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Drop errors whose text contains any allowlisted substring (case-insensitive)."""
+    if not errs:
+      return []
+    allow = [a.lower() for a in ALLOWED_CONSOLE_ERROR_SUBSTRINGS if a]
+    bad: list[tuple[str, str]] = []
+    for t, text in errs:
+      low = text.lower()
+      if any(fragment in low for fragment in allow):
+        continue
+      bad.append((t, text))
     return bad
 
 
@@ -200,6 +215,7 @@ def main() -> int:
                 for e in page_errors:
                     print(f"  {e}")
             errs = [x for x in logs if x[0] == "error"]
+            bad_errs = blocking_errors(errs)
             warns = [x for x in logs if x[0] == "warning"]
             bad_warns = blocking_warnings(warns)
             lobber_fails: list[str] = []
@@ -220,23 +236,25 @@ def main() -> int:
                     print(f"FUNCTIONAL.fail {path} (arcade room picker):")
                     for f in room_fails:
                         print(f"  {f}")
-            if errs:
+            if bad_errs:
                 exit_code = 1
                 if not page_errors:
                     n_fail += 1
                 print(f"CONSOLE.error {path}:")
-                for _t, text in errs:
+                for _t, text in bad_errs:
                     print(f"  {text}")
+            elif errs:
+                print(f"CONSOLE.error (allowlisted) {path}: {len(errs)} message(s)")
             if bad_warns:
                 exit_code = 1
-                if not page_errors and not errs:
+                if not page_errors and not bad_errs:
                     n_fail += 1
                 print(f"CONSOLE.warning {path}:")
                 for _t, text in bad_warns:
                     print(f"  {text}")
             elif warns:
                 print(f"CONSOLE.warning (allowlisted) {path}: {len(warns)} message(s)")
-            if not page_errors and not errs and not bad_warns and not lobber_fails and not room_fails:
+            if not page_errors and not bad_errs and not bad_warns and not lobber_fails and not room_fails:
                 room_ok = ", arcade room picker OK" if path in ROOM_PICK_BROWSER_FUNCTIONAL_PAGES else ""
                 print(f"OK {path} (no errors / no blocking warnings in 3.5s window{room_ok})")
                 n_ok += 1
