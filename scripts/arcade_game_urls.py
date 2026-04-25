@@ -5,6 +5,7 @@ from __future__ import annotations
 # Fetched with GET; local href/src resolved with HEAD/GET (check_served_html.py).
 SERVED_HTML_CHECK_PAGES: list[str] = [
     "/",
+    "/stick-animator-pro/",
     "/lobber/game.html",
     "/lobber/index.html",
     "/tetris/man.html",
@@ -36,6 +37,11 @@ ALLOWED_CONSOLE_ERROR_SUBSTRINGS: tuple[str, ...] = (
 
 # Required substrings (case-insensitive) per path for HTML contract / regression checks.
 REQUIRED_HTML_SNIPPETS: dict[str, tuple[str, ...]] = {
+    "/stick-animator-pro/": (
+        "Stick Animator Pro",
+        "src/app.js",
+        "src/styles.css",
+    ),
     "/lobber/game.html": (
         'id="gameCanvas"',
         'id="emojiPicker"',

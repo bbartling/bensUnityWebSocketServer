@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 INDEX_HTML = STATIC_DIR / "index.html"
+STICK_ANIMATOR_DIR = Path(r"C:\Users\ben\Downloads\stick-animator-pro\stick-animator-pro")
 
 
 app = FastAPI(title="MQTT Arcade", version="2.0.0")
@@ -60,5 +61,8 @@ async def legacy_pong_dad():
 async def legacy_pong_adrien():
     return RedirectResponse(url="/pong/boy.html", status_code=307)
 
+
+if STICK_ANIMATOR_DIR.is_dir():
+    app.mount("/stick-animator-pro", StaticFiles(directory=str(STICK_ANIMATOR_DIR), html=True), name="stick-animator-pro")
 
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")

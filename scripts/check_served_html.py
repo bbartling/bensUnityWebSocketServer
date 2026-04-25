@@ -76,7 +76,10 @@ def main() -> int:
                 for snip in req:
                     if snip.lower() not in low:
                         issues.append((path, f"missing required snippet {snip!r}"))
-            base_dir = path.rsplit("/", 1)[0] if "/" in path.strip("/") else ""
+            if path.endswith("/") and path != "/":
+                base_dir = path.rstrip("/")
+            else:
+                base_dir = path.rsplit("/", 1)[0] if "/" in path.strip("/") else ""
             for m in ATTR_RE.findall(body):
                 if m.startswith(("http://", "https://", "mailto:", "data:", "#")):
                     continue
