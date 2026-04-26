@@ -227,6 +227,13 @@ a.game-card:active {
     #05060a;
 }
 
+.card-visual.stick-animator {
+  background:
+    radial-gradient(circle at 28% 26%, rgba(0, 240, 255, 0.12) 0%, transparent 44%),
+    radial-gradient(circle at 72% 74%, rgba(107, 140, 255, 0.11) 0%, transparent 40%),
+    #05060a;
+}
+
 .card-body {
   padding: 18px 18px 22px;
   border-top: 2px dotted rgba(0, 240, 255, 0.12);
@@ -553,4 +560,130 @@ footer code {
   border-bottom-color: transparent;
   transform: rotate(-35deg);
   pointer-events: none;
+}
+
+/* Stick Animator Pro — animated stick figure preview */
+.ico-stick-animator {
+  position: relative;
+  width: 132px;
+  height: 82px;
+  background: linear-gradient(165deg, #3a4258 0%, #272e42 100%);
+  border: 1px solid rgba(122, 240, 255, 0.26);
+  border-radius: 4px;
+  box-shadow:
+    0 3px 0 #050508,
+    0 8px 20px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.ico-stick-head,
+.ico-stick-body,
+.ico-stick-arm-l,
+.ico-stick-arm-r,
+.ico-stick-leg-l,
+.ico-stick-leg-r {
+  position: absolute;
+  left: 50%;
+  background: #7af0ff;
+  box-shadow: 0 0 8px rgba(122, 240, 255, 0.35);
+}
+
+.ico-stick-head {
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  top: 12px;
+  border-radius: 50%;
+  border: 2px solid #0a0a10;
+  background: #6b8cff;
+  box-shadow: 0 0 10px rgba(107, 140, 255, 0.4);
+}
+
+.ico-stick-body {
+  width: 4px;
+  height: 24px;
+  margin-left: -2px;
+  top: 26px;
+  border-radius: 2px;
+}
+
+.ico-stick-arm-l,
+.ico-stick-arm-r,
+.ico-stick-leg-l,
+.ico-stick-leg-r {
+  width: 4px;
+  border-radius: 2px;
+  transform-origin: top center;
+}
+
+.ico-stick-arm-l,
+.ico-stick-arm-r {
+  height: 18px;
+  top: 30px;
+}
+
+.ico-stick-arm-l {
+  margin-left: -12px;
+  transform: rotate(35deg);
+  animation: ico-stick-arm-l 0.85s ease-in-out infinite alternate;
+}
+
+.ico-stick-arm-r {
+  margin-left: 8px;
+  transform: rotate(-35deg);
+  animation: ico-stick-arm-r 0.85s ease-in-out infinite alternate;
+}
+
+.ico-stick-leg-l,
+.ico-stick-leg-r {
+  height: 22px;
+  top: 48px;
+}
+
+.ico-stick-leg-l {
+  margin-left: -8px;
+  transform: rotate(24deg);
+  animation: ico-stick-leg-l 0.85s ease-in-out infinite alternate;
+}
+
+.ico-stick-leg-r {
+  margin-left: 4px;
+  transform: rotate(-24deg);
+  animation: ico-stick-leg-r 0.85s ease-in-out infinite alternate;
+}
+
+@keyframes ico-stick-arm-l {
+  from {
+    transform: rotate(25deg);
+  }
+  to {
+    transform: rotate(48deg);
+  }
+}
+
+@keyframes ico-stick-arm-r {
+  from {
+    transform: rotate(-25deg);
+  }
+  to {
+    transform: rotate(-48deg);
+  }
+}
+
+@keyframes ico-stick-leg-l {
+  from {
+    transform: rotate(12deg);
+  }
+  to {
+    transform: rotate(32deg);
+  }
+}
+
+@keyframes ico-stick-leg-r {
+  from {
+    transform: rotate(-12deg);
+  }
+  to {
+    transform: rotate(-32deg);
+  }
 }
