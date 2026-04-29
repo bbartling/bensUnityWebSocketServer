@@ -44,7 +44,7 @@ function stageSvg() {
   const layers = [];
   const line = (a, b) => `<line x1="${p[a].x}" y1="${p[a].y}" x2="${p[b].x}" y2="${p[b].y}" stroke="#0f172a" stroke-width="14" stroke-linecap="round"/>`;
   const joint = (k) =>
-    `<circle data-joint="${k}" cx="${p[k].x}" cy="${p[k].y}" r="15" fill="#7dd3fc" stroke="#ffffff" stroke-width="3"/>`;
+    `<circle data-joint="${k}" draggable="false" cx="${p[k].x}" cy="${p[k].y}" r="15" fill="#7dd3fc" stroke="#ffffff" stroke-width="3"/>`;
   const limbs = [
     ['head', 'neck'], ['neck', 'hip'],
     ['neck', 'leftElbow'], ['leftElbow', 'leftHand'],
@@ -108,7 +108,7 @@ function render() {
             <label class="hint">Ghost frames <input id="onionCount" type="number" min="1" max="6" value="${state.onionCount}" /></label>
           </div>
           <div class="hint">Frame ${state.index + 1} / ${state.frames.length} · Drag joints to pose</div>
-          <svg id="stage" viewBox="0 0 ${W} ${H}" aria-label="Stick animation stage">${stageSvg()}</svg>
+          <svg id="stage" draggable="false" viewBox="0 0 ${W} ${H}" aria-label="Stick animation stage">${stageSvg()}</svg>
         </section>
       </main>
       <div class="footer">This deploy-safe version is stored in /static/stick-animator-pro.</div>
@@ -136,16 +136,22 @@ function render() {
 
 function bindStageDrag() {
   const svg = document.getElementById('stage');
+  if (!svg) return;
+  svg.addEventListener('dragstart', (e) => e.preventDefault());
   svg.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
     const pt = clientToSvg(svg, e.clientX, e.clientY);
     const exact = e.target?.dataset?.joint || null;
     const nearest = exact || nearestJointAtPoint(current().pose, pt.x, pt.y);
     if (!nearest) return;
     dragJoint = nearest;
     svg.setPointerCapture(e.pointerId);
+    svg.style.cursor = 'grabbing';
   });
   svg.addEventListener('pointermove', (e) => {
     if (!dragJoint) return;
+    e.preventDefault();
     const pt = clientToSvg(svg, e.clientX, e.clientY);
     const cur = current().pose[dragJoint] || { x: 0, y: 0 };
     current().pose[dragJoint] = {
@@ -157,8 +163,13 @@ function bindStageDrag() {
     }
     svg.innerHTML = stageSvg();
   });
-  svg.addEventListener('pointerup', () => { dragJoint = null; });
-  svg.addEventListener('pointercancel', () => { dragJoint = null; });
+  const stopDrag = () => {
+    dragJoint = null;
+    svg.style.cursor = '';
+  };
+  svg.addEventListener('pointerup', stopDrag);
+  svg.addEventListener('pointercancel', stopDrag);
+  svg.addEventListener('lostpointercapture', stopDrag);
 }
 
 function nearestJointAtPoint(pose, x, y) {
