@@ -7,6 +7,11 @@ from pathlib import Path
 
 _BASE_DIR = Path(__file__).resolve().parent
 _REPO_DIR = _BASE_DIR.parent
+STICK_ROUTE = "/stick-animator-pro/"
+_STICK_INDEX_CANDIDATES = (
+    _REPO_DIR / "static" / "stick-animator-pro" / "index.html",
+    _REPO_DIR / "stick-animator-pro" / "index.html",
+)
 
 
 def _env_truthy(name: str) -> bool:
@@ -22,11 +27,23 @@ def stick_animator_checks_enabled() -> bool:
     """
     if _env_truthy("ARCADE_INCLUDE_STICK_ANIMATOR"):
         return True
-    candidates = (
-        _REPO_DIR / "static" / "stick-animator-pro" / "index.html",
-        _REPO_DIR / "stick-animator-pro" / "index.html",
-    )
-    return any(p.is_file() for p in candidates)
+    return any(p.is_file() for p in _STICK_INDEX_CANDIDATES)
+
+
+def stick_animator_check_status() -> tuple[bool, str]:
+    """
+    Human-readable status for logs/debugging.
+    Returns: (enabled, reason)
+    """
+    forced = _env_truthy("ARCADE_INCLUDE_STICK_ANIMATOR")
+    existing = next((p for p in _STICK_INDEX_CANDIDATES if p.is_file()), None)
+    if forced and existing:
+        return True, f"forced by ARCADE_INCLUDE_STICK_ANIMATOR=1; found {existing}"
+    if forced and not existing:
+        return False, "ARCADE_INCLUDE_STICK_ANIMATOR=1 but stick animator index.html was not found in repo"
+    if existing:
+        return True, f"auto-enabled; found {existing}"
+    return False, "auto-disabled; stick animator assets not present in repo"
 
 
 _INCLUDE_STICK = stick_animator_checks_enabled()
@@ -50,7 +67,7 @@ SERVED_HTML_CHECK_PAGES: list[str] = (
     "/mahjong/boy.html",
     "/mahjong/index.html",
     ]
-    + (["/stick-animator-pro/"] if _INCLUDE_STICK else [])
+    + ([STICK_ROUTE] if _INCLUDE_STICK else [])
 )
 
 # Playwright loads each URL; console + page errors fail (check_browser_console.py).
@@ -109,7 +126,7 @@ REQUIRED_HTML_SNIPPETS: dict[str, tuple[str, ...]] = {
 }
 
 if _INCLUDE_STICK:
-    REQUIRED_HTML_SNIPPETS["/stick-animator-pro/"] = (
+    REQUIRED_HTML_SNIPPETS[STICK_ROUTE] = (
         "Stick Animator Pro",
         "src/app.js",
         "src/styles.css",
@@ -139,6 +156,12 @@ def arcade_urls_self_check() -> list[str]:
     for p in REQUIRED_HTML_SNIPPETS:
         if p not in SERVED_HTML_CHECK_PAGES:
             fails.append(f"REQUIRED_HTML_SNIPPETS key {p!r} missing from SERVED_HTML_CHECK_PAGES")
+    forced = _env_truthy("ARCADE_INCLUDE_STICK_ANIMATOR")
+    if forced and not any(p.is_file() for p in _STICK_INDEX_CANDIDATES):
+        fails.append(
+            "ARCADE_INCLUDE_STICK_ANIMATOR is enabled, but stick animator files were not found. "
+            "Expected index.html at static/stick-animator-pro/ or stick-animator-pro/."
+        )
     seen: set[str] = set()
     for p in SERVED_HTML_CHECK_PAGES:
         if p in seen:

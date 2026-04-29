@@ -29,6 +29,7 @@ from arcade_game_urls import (
     ALLOWED_CONSOLE_WARNING_SUBSTRINGS,
     BROWSER_CONSOLE_CHECK_PAGES,
     ROOM_PICK_BROWSER_FUNCTIONAL_PAGES,
+    stick_animator_check_status,
 )
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
@@ -182,6 +183,8 @@ def main() -> int:
     exit_code = 0
     n_ok = 0
     n_fail = 0
+    stick_on, stick_reason = stick_animator_check_status()
+    print(f"INFO: stick animator route checks {'ENABLED' if stick_on else 'DISABLED'} ({stick_reason})")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         for path in PAGES:

@@ -24,7 +24,12 @@ _BASE_DIR = Path(__file__).resolve().parent
 if str(_BASE_DIR) not in sys.path:
     sys.path.insert(0, str(_BASE_DIR))
 
-from arcade_game_urls import ARCADE_ROOM_STATIC_ASSETS, REQUIRED_HTML_SNIPPETS, SERVED_HTML_CHECK_PAGES
+from arcade_game_urls import (
+    ARCADE_ROOM_STATIC_ASSETS,
+    REQUIRED_HTML_SNIPPETS,
+    SERVED_HTML_CHECK_PAGES,
+    stick_animator_check_status,
+)
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8877"
 
@@ -63,6 +68,8 @@ def check_url(url: str) -> tuple[bool, str]:
 
 def main() -> int:
     issues: list[tuple[str, str]] = []
+    stick_on, stick_reason = stick_animator_check_status()
+    print(f"INFO: stick animator route checks {'ENABLED' if stick_on else 'DISABLED'} ({stick_reason})")
     try:
         for path in PAGES:
             body = fetch(BASE + path)
