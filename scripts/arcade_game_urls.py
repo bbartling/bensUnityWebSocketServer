@@ -1,11 +1,40 @@
 """URL paths and HTML contract snippets for arcade smoke tests (see static/)."""
 
 from __future__ import annotations
+import os
+from pathlib import Path
+
+
+_BASE_DIR = Path(__file__).resolve().parent
+_REPO_DIR = _BASE_DIR.parent
+
+
+def _env_truthy(name: str) -> bool:
+    v = os.getenv(name, "").strip().lower()
+    return v in {"1", "true", "yes", "on"}
+
+
+def stick_animator_checks_enabled() -> bool:
+    """
+    Enable Stick Animator checks when:
+      - ARCADE_INCLUDE_STICK_ANIMATOR env var is truthy, OR
+      - assets are present in common in-repo mount locations.
+    """
+    if _env_truthy("ARCADE_INCLUDE_STICK_ANIMATOR"):
+        return True
+    candidates = (
+        _REPO_DIR / "static" / "stick-animator-pro" / "index.html",
+        _REPO_DIR / "stick-animator-pro" / "index.html",
+    )
+    return any(p.is_file() for p in candidates)
+
+
+_INCLUDE_STICK = stick_animator_checks_enabled()
 
 # Fetched with GET; local href/src resolved with HEAD/GET (check_served_html.py).
-SERVED_HTML_CHECK_PAGES: list[str] = [
+SERVED_HTML_CHECK_PAGES: list[str] = (
+    [
     "/",
-    "/stick-animator-pro/",
     "/lobber/game.html",
     "/lobber/index.html",
     "/tetris/man.html",
@@ -20,7 +49,9 @@ SERVED_HTML_CHECK_PAGES: list[str] = [
     "/mahjong/man.html",
     "/mahjong/boy.html",
     "/mahjong/index.html",
-]
+    ]
+    + (["/stick-animator-pro/"] if _INCLUDE_STICK else [])
+)
 
 # Playwright loads each URL; console + page errors fail (check_browser_console.py).
 BROWSER_CONSOLE_CHECK_PAGES: list[str] = list(SERVED_HTML_CHECK_PAGES)
@@ -37,11 +68,6 @@ ALLOWED_CONSOLE_ERROR_SUBSTRINGS: tuple[str, ...] = (
 
 # Required substrings (case-insensitive) per path for HTML contract / regression checks.
 REQUIRED_HTML_SNIPPETS: dict[str, tuple[str, ...]] = {
-    "/stick-animator-pro/": (
-        "Stick Animator Pro",
-        "src/app.js",
-        "src/styles.css",
-    ),
     "/lobber/game.html": (
         'id="gameCanvas"',
         'id="emojiPicker"',
@@ -81,6 +107,13 @@ REQUIRED_HTML_SNIPPETS: dict[str, tuple[str, ...]] = {
     "/mahjong/man.html": ("/arcade-room-pick.js", "rewritePartnerLinks"),
     "/mahjong/boy.html": ("/arcade-room-pick.js", "rewritePartnerLinks"),
 }
+
+if _INCLUDE_STICK:
+    REQUIRED_HTML_SNIPPETS["/stick-animator-pro/"] = (
+        "Stick Animator Pro",
+        "src/app.js",
+        "src/styles.css",
+    )
 
 # Playwright: after load, pick a silly room and assert Man/Boy links share ?room= (check_browser_console.py).
 ROOM_PICK_BROWSER_FUNCTIONAL_PAGES: tuple[str, ...] = (

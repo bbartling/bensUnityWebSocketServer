@@ -32,6 +32,7 @@ def resolve_stick_animator_dir() -> Path | None:
         candidates.append(Path(env_dir))
 
     candidates.append(BASE_DIR / "stick-animator-pro")
+    candidates.append(STATIC_DIR / "stick-animator-pro")
     candidates.append(Path(r"C:\Users\ben\Downloads\stick-animator-pro\stick-animator-pro"))
 
     for c in candidates:
