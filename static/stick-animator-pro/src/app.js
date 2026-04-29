@@ -23,14 +23,12 @@ let state = {
   onionSkin: true,
   onionCount: 3,
   onionOpacity: 0.32,
-  dragBoost: 1.65,
   frames: [{ pose: defaultPose() }],
   index: 0,
   playing: false,
 };
 
 let dragJoint = null;
-let dragLast = null;
 let timer = null;
 
 function clone(v) {
@@ -108,9 +106,8 @@ function render() {
           <div class="controls">
             <label class="hint">Onion skin <input id="onionSkin" type="checkbox" ${state.onionSkin ? 'checked' : ''} /></label>
             <label class="hint">Ghost frames <input id="onionCount" type="number" min="1" max="6" value="${state.onionCount}" /></label>
-            <label class="hint">Drag boost <input id="dragBoost" type="range" min="1" max="3" step="0.05" value="${state.dragBoost}" /></label>
           </div>
-          <div class="hint">Frame ${state.index + 1} / ${state.frames.length} · Drag joints to pose (boost helps long walking strides)</div>
+          <div class="hint">Frame ${state.index + 1} / ${state.frames.length} · Drag joints to pose</div>
           <svg id="stage" viewBox="0 0 ${W} ${H}" aria-label="Stick animation stage">${stageSvg()}</svg>
         </section>
       </main>
@@ -134,7 +131,6 @@ function render() {
   document.getElementById('exportJson').addEventListener('click', exportJson);
   document.getElementById('onionSkin').addEventListener('change', (e) => { state.onionSkin = !!e.target.checked; render(); });
   document.getElementById('onionCount').addEventListener('input', (e) => { state.onionCount = Math.max(1, Math.min(6, Number(e.target.value || 3))); render(); });
-  document.getElementById('dragBoost').addEventListener('input', (e) => { state.dragBoost = Math.max(1, Math.min(3, Number(e.target.value || 1.65))); });
   bindStageDrag();
 }
 
@@ -143,33 +139,31 @@ function bindStageDrag() {
   svg.addEventListener('pointerdown', (e) => {
     const pt = clientToSvg(svg, e.clientX, e.clientY);
     const exact = e.target?.dataset?.joint || null;
-    const nearest = exact || nearestJointAtPoint(current().pose, pt.x, pt.y, 30);
+    const nearest = exact || nearestJointAtPoint(current().pose, pt.x, pt.y);
     if (!nearest) return;
     dragJoint = nearest;
-    dragLast = pt;
     svg.setPointerCapture(e.pointerId);
   });
   svg.addEventListener('pointermove', (e) => {
     if (!dragJoint) return;
     const pt = clientToSvg(svg, e.clientX, e.clientY);
-    const prev = dragLast || pt;
-    const dx = (pt.x - prev.x) * state.dragBoost;
-    const dy = (pt.y - prev.y) * state.dragBoost;
-    const cur = current().pose[dragJoint];
+    const cur = current().pose[dragJoint] || { x: 0, y: 0 };
     current().pose[dragJoint] = {
-      x: Math.max(0, Math.min(W, Math.round(cur.x + dx))),
-      y: Math.max(0, Math.min(H, Math.round(cur.y + dy))),
+      x: Math.max(0, Math.min(W, Math.round(pt.x))),
+      y: Math.max(0, Math.min(H, Math.round(pt.y))),
     };
-    dragLast = pt;
+    if (cur.x === current().pose[dragJoint].x && cur.y === current().pose[dragJoint].y) {
+      return;
+    }
     svg.innerHTML = stageSvg();
   });
-  svg.addEventListener('pointerup', () => { dragJoint = null; dragLast = null; });
-  svg.addEventListener('pointercancel', () => { dragJoint = null; dragLast = null; });
+  svg.addEventListener('pointerup', () => { dragJoint = null; });
+  svg.addEventListener('pointercancel', () => { dragJoint = null; });
 }
 
-function nearestJointAtPoint(pose, x, y, maxDist) {
+function nearestJointAtPoint(pose, x, y) {
   let best = null;
-  let bestD2 = maxDist * maxDist;
+  let bestD2 = Number.POSITIVE_INFINITY;
   for (const [name, pt] of Object.entries(pose || {})) {
     const dx = pt.x - x;
     const dy = pt.y - y;
