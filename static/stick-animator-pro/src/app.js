@@ -141,10 +141,12 @@ function render() {
 function bindStageDrag() {
   const svg = document.getElementById('stage');
   svg.addEventListener('pointerdown', (e) => {
-    const j = e.target?.dataset?.joint;
-    if (!j) return;
-    dragJoint = j;
-    dragLast = clientToSvg(svg, e.clientX, e.clientY);
+    const pt = clientToSvg(svg, e.clientX, e.clientY);
+    const exact = e.target?.dataset?.joint || null;
+    const nearest = exact || nearestJointAtPoint(current().pose, pt.x, pt.y, 30);
+    if (!nearest) return;
+    dragJoint = nearest;
+    dragLast = pt;
     svg.setPointerCapture(e.pointerId);
   });
   svg.addEventListener('pointermove', (e) => {
@@ -163,6 +165,21 @@ function bindStageDrag() {
   });
   svg.addEventListener('pointerup', () => { dragJoint = null; dragLast = null; });
   svg.addEventListener('pointercancel', () => { dragJoint = null; dragLast = null; });
+}
+
+function nearestJointAtPoint(pose, x, y, maxDist) {
+  let best = null;
+  let bestD2 = maxDist * maxDist;
+  for (const [name, pt] of Object.entries(pose || {})) {
+    const dx = pt.x - x;
+    const dy = pt.y - y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= bestD2) {
+      bestD2 = d2;
+      best = name;
+    }
+  }
+  return best;
 }
 
 function clientToSvg(svg, clientX, clientY) {
