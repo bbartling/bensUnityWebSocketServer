@@ -20,6 +20,7 @@ const defaultPose = () => ({
 let state = {
   name: 'Stick Animator Pro',
   frameMs: 180,
+  playFps: 12,
   onionSkin: true,
   onionCount: 3,
   onionOpacity: 0.32,
@@ -39,7 +40,7 @@ function current() {
   return state.frames[state.index];
 }
 
-function stageSvg() {
+function stageSvg(playbackOnly = false) {
   const p = current().pose;
   const layers = [];
   const line = (a, b) => `<line x1="${p[a].x}" y1="${p[a].y}" x2="${p[b].x}" y2="${p[b].y}" stroke="#0f172a" stroke-width="14" stroke-linecap="round"/>`;
@@ -61,7 +62,7 @@ function stageSvg() {
       includeJoints ? Object.keys(pose).map(jn).join('') : '',
     ].join('');
   };
-  if (state.onionSkin) {
+  if (!playbackOnly && state.onionSkin) {
     for (let n = state.onionCount; n >= 1; n--) {
       const prev = state.frames[state.index - n];
       if (!prev) continue;
@@ -71,7 +72,7 @@ function stageSvg() {
       layers.push(drawPose(prev.pose, '#7c8597', op, false));
     }
   }
-  layers.push(drawPose(p, '#0f172a', 1, true));
+  layers.push(drawPose(p, '#0f172a', 1, !playbackOnly));
   return `
     <defs>
       <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -85,6 +86,7 @@ function stageSvg() {
 }
 
 function render() {
+  const playbackOnly = !!state.playing;
   app.innerHTML = `
     <div class="wrap">
       <header>
@@ -94,6 +96,19 @@ function render() {
         </div>
         <div class="controls">
           <button id="play" class="good">${state.playing ? 'Pause' : 'Play'}</button>
+          <label class="hint">Play FPS
+            <select id="playFps">
+              <option value="0" ${state.playFps === 0 ? 'selected' : ''}>Use frame timing</option>
+              <option value="6" ${state.playFps === 6 ? 'selected' : ''}>6</option>
+              <option value="8" ${state.playFps === 8 ? 'selected' : ''}>8</option>
+              <option value="10" ${state.playFps === 10 ? 'selected' : ''}>10</option>
+              <option value="12" ${state.playFps === 12 ? 'selected' : ''}>12</option>
+              <option value="15" ${state.playFps === 15 ? 'selected' : ''}>15</option>
+              <option value="24" ${state.playFps === 24 ? 'selected' : ''}>24</option>
+              <option value="30" ${state.playFps === 30 ? 'selected' : ''}>30</option>
+              <option value="60" ${state.playFps === 60 ? 'selected' : ''}>60</option>
+            </select>
+          </label>
           <button id="prev">Prev</button>
           <button id="next">Next</button>
           <button id="add">+ Frame</button>
@@ -104,11 +119,11 @@ function render() {
       <main>
         <section class="panel stage-wrap">
           <div class="controls">
-            <label class="hint">Onion skin <input id="onionSkin" type="checkbox" ${state.onionSkin ? 'checked' : ''} /></label>
+            <label class="hint">Onion skin <input id="onionSkin" type="checkbox" ${state.onionSkin ? 'checked' : ''} ${playbackOnly ? 'disabled' : ''} /></label>
             <label class="hint">Ghost frames <input id="onionCount" type="number" min="1" max="6" value="${state.onionCount}" /></label>
           </div>
-          <div class="hint">Frame ${state.index + 1} / ${state.frames.length} · Drag joints to pose</div>
-          <svg id="stage" draggable="false" viewBox="0 0 ${W} ${H}" aria-label="Stick animation stage">${stageSvg()}</svg>
+          <div class="hint">Frame ${state.index + 1} / ${state.frames.length} · ${playbackOnly ? 'Playback view (clean)' : 'Drag joints to pose'}</div>
+          <svg id="stage" draggable="false" viewBox="0 0 ${W} ${H}" aria-label="Animation stage">${stageSvg(playbackOnly)}</svg>
         </section>
       </main>
       <div class="footer">This deploy-safe version is stored in /static/stick-animator-pro.</div>
@@ -116,6 +131,13 @@ function render() {
   `;
 
   document.getElementById('play').addEventListener('click', togglePlay);
+  document.getElementById('playFps').addEventListener('change', (e) => {
+    state.playFps = Math.max(0, Math.min(60, Number(e.target.value || 0)));
+    if (state.playing) {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(playLoop, currentPlayDelayMs());
+    }
+  });
   document.getElementById('prev').addEventListener('click', () => { state.index = (state.index - 1 + state.frames.length) % state.frames.length; render(); });
   document.getElementById('next').addEventListener('click', () => { state.index = (state.index + 1) % state.frames.length; render(); });
   document.getElementById('add').addEventListener('click', () => {
@@ -137,6 +159,7 @@ function render() {
 function bindStageDrag() {
   const svg = document.getElementById('stage');
   if (!svg) return;
+  if (state.playing) return;
   svg.addEventListener('dragstart', (e) => e.preventDefault());
   svg.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
@@ -213,11 +236,18 @@ function togglePlay() {
   render();
 }
 
+function currentPlayDelayMs() {
+  if (state.playFps && state.playFps > 0) {
+    return Math.max(16, Math.round(1000 / state.playFps));
+  }
+  return Math.max(40, Number(state.frameMs || 180));
+}
+
 function playLoop() {
   if (!state.playing) return;
   state.index = (state.index + 1) % state.frames.length;
   render();
-  timer = setTimeout(playLoop, state.frameMs);
+  timer = setTimeout(playLoop, currentPlayDelayMs());
 }
 
 render();
