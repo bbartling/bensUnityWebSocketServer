@@ -2,6 +2,7 @@ const app = document.getElementById('app');
 
 const W = 1280;
 const H = 720;
+const PART_TABS = ['head', 'torso', 'leftArm', 'rightArm', 'leftHand', 'rightHand', 'leftLeg', 'rightLeg', 'leftFoot', 'rightFoot'];
 
 const defaultPose = () => ({
   head: { x: 640, y: 170 },
@@ -21,15 +22,24 @@ let state = {
   name: 'Stick Animator Pro',
   frameMs: 180,
   playFps: 12,
+  zoom: 1,
   onionSkin: true,
   onionCount: 3,
   onionOpacity: 0.32,
+  partStudio: {
+    open: false,
+    part: 'head',
+    brushColor: '#111827',
+    brushSize: 5,
+    art: {},
+  },
   frames: [{ pose: defaultPose() }],
   index: 0,
   playing: false,
 };
 
 let dragJoint = null;
+let partDrawing = null;
 let timer = null;
 
 function clone(v) {
@@ -55,10 +65,11 @@ function stageSvg(playbackOnly = false) {
   ];
   const drawPose = (pose, stroke, opacity, includeJoints) => {
     const ln = (a, b) => `<line x1="${pose[a].x}" y1="${pose[a].y}" x2="${pose[b].x}" y2="${pose[b].y}" stroke="${stroke}" stroke-width="14" stroke-linecap="round" opacity="${opacity}"/>`;
-    const jn = (k) => `<circle data-joint="${k}" cx="${pose[k].x}" cy="${pose[k].y}" r="15" fill="#7dd3fc" stroke="#ffffff" stroke-width="3"/>`;
+    const jn = (k) => `<circle data-joint="${k}" draggable="false" cx="${pose[k].x}" cy="${pose[k].y}" r="15" fill="#7dd3fc" stroke="#ffffff" stroke-width="3"/>`;
     return [
       `<circle cx="${pose.head.x}" cy="${pose.head.y}" r="42" fill="none" stroke="${stroke}" stroke-width="8" opacity="${opacity}"/>`,
       limbs.map(([a, b]) => ln(a, b)).join(''),
+      partArtSvg(pose, stroke, opacity, !!playbackOnly),
       includeJoints ? Object.keys(pose).map(jn).join('') : '',
     ].join('');
   };
@@ -85,8 +96,79 @@ function stageSvg(playbackOnly = false) {
   `;
 }
 
+function ensurePartArt() {
+  state.partStudio ??= { open: false, part: 'head', brushColor: '#111827', brushSize: 5, art: {} };
+  state.partStudio.art ??= {};
+  for (const p of PART_TABS) {
+    if (!Array.isArray(state.partStudio.art[p])) state.partStudio.art[p] = [];
+  }
+}
+
+function segmentBasis(a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.max(1, Math.hypot(dx, dy));
+  const tx = dx / len;
+  const ty = dy / len;
+  const nx = -ty;
+  const ny = tx;
+  return { len, tx, ty, nx, ny };
+}
+
+function mapNormToWorld(part, pose, u, v) {
+  if (part === 'head') {
+    const c = pose.head;
+    const r = 42;
+    return { x: c.x + u * r, y: c.y + v * r };
+  }
+  if (part === 'leftHand' || part === 'rightHand' || part === 'leftFoot' || part === 'rightFoot') {
+    const c = pose[part];
+    const r = 22;
+    return { x: c.x + u * r, y: c.y + v * r };
+  }
+  const links = {
+    torso: ['neck', 'hip'],
+    leftArm: ['neck', 'leftHand'],
+    rightArm: ['neck', 'rightHand'],
+    leftLeg: ['hip', 'leftFoot'],
+    rightLeg: ['hip', 'rightFoot'],
+  };
+  const pair = links[part];
+  if (!pair) return { x: 0, y: 0 };
+  const a = pose[pair[0]];
+  const b = pose[pair[1]];
+  const basis = segmentBasis(a, b);
+  const t = (u + 1) * 0.5; // map -1..1 to 0..1 along segment
+  const px = a.x + basis.tx * basis.len * t + basis.nx * v * basis.len * 0.33;
+  const py = a.y + basis.ty * basis.len * t + basis.ny * v * basis.len * 0.33;
+  return { x: px, y: py };
+}
+
+function partArtSvg(pose, stroke, opacity, playbackOnly) {
+  ensurePartArt();
+  const out = [];
+  for (const part of PART_TABS) {
+    const strokes = state.partStudio.art[part];
+    if (!strokes?.length) continue;
+    for (const s of strokes) {
+      if (!s?.points || s.points.length < 2) continue;
+      const pts = s.points
+        .map((p) => {
+          const q = mapNormToWorld(part, pose, Number(p.u || 0), Number(p.v || 0));
+          return `${Math.round(q.x * 100) / 100},${Math.round(q.y * 100) / 100}`;
+        })
+        .join(' ');
+      const sw = Math.max(1.2, Number(s.widthNorm || 0.05) * 30);
+      const col = playbackOnly ? (s.color || stroke) : (s.color || stroke);
+      out.push(`<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}"/>`);
+    }
+  }
+  return out.join('');
+}
+
 function render() {
   const playbackOnly = !!state.playing;
+  ensurePartArt();
   app.innerHTML = `
     <div class="wrap">
       <header>
@@ -113,6 +195,7 @@ function render() {
           <button id="next">Next</button>
           <button id="add">+ Frame</button>
           <button id="dup">Duplicate</button>
+          <button id="openPartStudio">Part Studio</button>
           <button id="exportJson">Download JSON</button>
         </div>
       </header>
@@ -121,12 +204,34 @@ function render() {
           <div class="controls">
             <label class="hint">Onion skin <input id="onionSkin" type="checkbox" ${state.onionSkin ? 'checked' : ''} ${playbackOnly ? 'disabled' : ''} /></label>
             <label class="hint">Ghost frames <input id="onionCount" type="number" min="1" max="6" value="${state.onionCount}" /></label>
+            <label class="hint">Zoom <input id="zoomRange" type="range" min="0.5" max="3" step="0.1" value="${state.zoom}" /></label>
+            <button id="zoomReset">Reset Zoom</button>
           </div>
           <div class="hint">Frame ${state.index + 1} / ${state.frames.length} · ${playbackOnly ? 'Playback view (clean)' : 'Drag joints to pose'}</div>
-          <svg id="stage" draggable="false" viewBox="0 0 ${W} ${H}" aria-label="Animation stage">${stageSvg(playbackOnly)}</svg>
+          <div class="stage-viewport">
+            <svg id="stage" style="width:${Math.round(state.zoom * 100)}%;max-width:none;" draggable="false" viewBox="0 0 ${W} ${H}" aria-label="Animation stage">${stageSvg(playbackOnly)}</svg>
+          </div>
         </section>
       </main>
       <div class="footer">This deploy-safe version is stored in /static/stick-animator-pro.</div>
+      <div id="partStudioModal" class="face-studio-modal ${state.partStudio.open ? '' : 'hidden'}">
+        <div class="face-studio-card">
+          <div class="face-studio-head">
+            <h3>Part Studio (Vector Reshape)</h3>
+            <button id="closePartStudio" class="small">Close</button>
+          </div>
+          <div class="part-tabs">
+            ${PART_TABS.map((p) => `<button class="small ${state.partStudio.part === p ? 'good' : ''}" data-part-tab="${p}">${p}</button>`).join('')}
+          </div>
+          <div class="face-studio-tools">
+            <label>Brush color <input id="partBrushColor" type="color" value="${state.partStudio.brushColor}" /></label>
+            <label>Brush size <input id="partBrushSize" type="range" min="2" max="18" step="1" value="${state.partStudio.brushSize}" /></label>
+            <button id="partClear" class="small danger">Clear part</button>
+          </div>
+          <canvas id="partStudioCanvas" width="360" height="360" aria-label="Part Studio canvas"></canvas>
+          <p class="hint">Draw each body part in vector space. Art follows the rig while animating.</p>
+        </div>
+      </div>
     </div>
   `;
 
@@ -150,10 +255,126 @@ function render() {
     state.index += 1;
     render();
   });
+  document.getElementById('openPartStudio').addEventListener('click', () => { state.partStudio.open = true; render(); });
+  document.getElementById('closePartStudio').addEventListener('click', () => { state.partStudio.open = false; partDrawing = null; render(); });
+  document.querySelectorAll('[data-part-tab]').forEach((el) =>
+    el.addEventListener('click', () => {
+      state.partStudio.part = el.dataset.partTab || 'head';
+      drawPartStudioCanvas();
+      render();
+    }),
+  );
+  document.getElementById('partBrushColor').addEventListener('input', (e) => { state.partStudio.brushColor = e.target.value || '#111827'; });
+  document.getElementById('partBrushSize').addEventListener('input', (e) => { state.partStudio.brushSize = Math.max(2, Math.min(18, Number(e.target.value || 5))); });
+  document.getElementById('partClear').addEventListener('click', () => {
+    const part = state.partStudio.part;
+    state.partStudio.art[part] = [];
+    drawPartStudioCanvas();
+    document.getElementById('stage').innerHTML = stageSvg(!!state.playing);
+  });
   document.getElementById('exportJson').addEventListener('click', exportJson);
   document.getElementById('onionSkin').addEventListener('change', (e) => { state.onionSkin = !!e.target.checked; render(); });
   document.getElementById('onionCount').addEventListener('input', (e) => { state.onionCount = Math.max(1, Math.min(6, Number(e.target.value || 3))); render(); });
+  document.getElementById('zoomRange').addEventListener('input', (e) => { state.zoom = Math.max(0.5, Math.min(3, Number(e.target.value || 1))); render(); });
+  document.getElementById('zoomReset').addEventListener('click', () => { state.zoom = 1; render(); });
   bindStageDrag();
+  bindPartStudio();
+}
+
+function bindPartStudio() {
+  if (!state.partStudio.open) return;
+  const canvas = document.getElementById('partStudioCanvas');
+  if (!canvas) return;
+  drawPartStudioCanvas();
+  canvas.addEventListener('pointerdown', (e) => {
+    const p = partCanvasToNorm(canvas, e.clientX, e.clientY);
+    if (!p) return;
+    const stroke = {
+      color: state.partStudio.brushColor || '#111827',
+      widthNorm: Math.max(0.02, Math.min(0.16, Number(state.partStudio.brushSize || 5) / 80)),
+      points: [p],
+    };
+    state.partStudio.art[state.partStudio.part].push(stroke);
+    partDrawing = stroke;
+    canvas.setPointerCapture?.(e.pointerId);
+    drawPartStudioCanvas();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!partDrawing) return;
+    const p = partCanvasToNorm(canvas, e.clientX, e.clientY);
+    if (!p) return;
+    partDrawing.points.push(p);
+    drawPartStudioCanvas();
+    document.getElementById('stage').innerHTML = stageSvg(!!state.playing);
+  });
+  const done = () => {
+    if (!partDrawing) return;
+    partDrawing = null;
+  };
+  canvas.addEventListener('pointerup', done);
+  canvas.addEventListener('pointercancel', done);
+}
+
+function partCanvasToNorm(canvas, clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  if (!r.width || !r.height) return null;
+  const x = ((clientX - r.left) * canvas.width) / r.width;
+  const y = ((clientY - r.top) * canvas.height) / r.height;
+  const cx = canvas.width * 0.5;
+  const cy = canvas.height * 0.5;
+  const rr = canvas.width * 0.38;
+  return { u: Math.max(-1.2, Math.min(1.2, (x - cx) / rr)), v: Math.max(-1.2, Math.min(1.2, (y - cy) / rr)) };
+}
+
+function drawPartStudioCanvas() {
+  const canvas = document.getElementById('partStudioCanvas');
+  if (!canvas) return;
+  ensurePartArt();
+  const part = state.partStudio.part;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  const cx = w * 0.5;
+  const cy = h * 0.5;
+  const rr = w * 0.38;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#e5e7eb';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#f8fafc';
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 3;
+  if (part === 'head' || part.includes('Hand') || part.includes('Foot')) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, rr * 0.75, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(cx - rr, cy);
+    ctx.lineTo(cx + rr, cy);
+    ctx.stroke();
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - rr * 0.8);
+    ctx.lineTo(cx, cy + rr * 0.8);
+    ctx.stroke();
+  }
+  const strokes = state.partStudio.art[part] || [];
+  for (const s of strokes) {
+    if (!s.points || s.points.length < 2) continue;
+    ctx.strokeStyle = s.color || '#111827';
+    ctx.lineWidth = Math.max(2, (s.widthNorm || 0.05) * 80);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx + s.points[0].u * rr, cy + s.points[0].v * rr);
+    for (let i = 1; i < s.points.length; i++) {
+      const p = s.points[i];
+      ctx.lineTo(cx + p.u * rr, cy + p.v * rr);
+    }
+    ctx.stroke();
+  }
 }
 
 function bindStageDrag() {

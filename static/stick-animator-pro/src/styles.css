@@ -37,6 +37,14 @@ h1 { margin: 0; font-size: 1.05rem; }
 button, input {
   font: inherit;
 }
+select {
+  font: inherit;
+  border: 1px solid #3d4d69;
+  background: #0f172a;
+  color: #eef3ff;
+  padding: 0.35rem 0.45rem;
+  border-radius: 0.5rem;
+}
 button {
   border: 1px solid #3d4d69;
   background: linear-gradient(180deg, #2b3854, #1d263a);
@@ -60,10 +68,15 @@ main {
   display: grid;
   gap: 0.65rem;
 }
-#stage {
+.stage-viewport {
   width: 100%;
   max-width: 960px;
   margin: 0 auto;
+  overflow: auto;
+  border-radius: 0.75rem;
+}
+#stage {
+  width: 100%;
   border-radius: 0.75rem;
   border: 1px solid rgba(148,163,184,0.5);
   background: #f8fafc;
@@ -76,4 +89,58 @@ main {
   padding: 0.6rem 1rem;
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.face-studio-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.7);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  z-index: 2200;
+}
+.face-studio-modal.hidden {
+  display: none;
+}
+.face-studio-card {
+  width: min(94vw, 620px);
+  background: #0f172a;
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  border-radius: 1rem;
+  padding: 0.85rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  display: grid;
+  gap: 0.7rem;
+}
+.face-studio-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.face-studio-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.part-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.face-studio-tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0.55rem;
+  align-items: end;
+}
+#partStudioCanvas {
+  width: min(100%, 440px);
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: #e5e7eb;
+  touch-action: none;
 }
