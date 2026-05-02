@@ -121,10 +121,25 @@ main {
   background: rgba(30, 41, 59, 0.55);
   border: 1px solid rgba(125, 211, 252, 0.2);
 }
-.four-face-bar {
+.four-face-bar,
+.cycler-face-bar {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+.cycler-size-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  align-items: end;
+}
+.part-roll-row {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.part-roll-row input[type='range'] {
+  min-width: 120px;
+  vertical-align: middle;
 }
 .view-yaw-row {
   flex-wrap: wrap;

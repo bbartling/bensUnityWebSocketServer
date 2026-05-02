@@ -33,6 +33,7 @@ const defaultPose = () => ({
   leftFoot: { x: 560, y: 620 },
   rightKnee: { x: 690, y: 500 },
   rightFoot: { x: 720, y: 620 },
+  partRoll: {},
 });
 
 let state = {
@@ -57,12 +58,15 @@ let state = {
     selectedHandle: 'anchor',
     simple4View: false,
     fourViewFace: 'front',
+    cyclerPaintIndex: 0,
+    defaultCyclerSides: 8,
     art: {},
     requireVisitBeforeStagePose: false,
   },
   frames: [{ pose: defaultPose(), viewYaw: 0 }],
   index: 0,
   playing: false,
+  stagePartRollPick: 'torso',
 };
 
 let dragJoint = null;
@@ -96,7 +100,12 @@ function stageSvg(playbackOnly = false) {
       `<circle cx="${pose.head.x}" cy="${pose.head.y}" r="42" fill="none" stroke="${stroke}" stroke-width="8" opacity="${opacity}"/>`,
       limbs.map(([a, b]) => ln(a, b)).join(''),
       partArtSvg(pose, stroke, opacity, !!playbackOnly),
-      includeJoints ? Object.keys(pose).map(jn).join('') : '',
+      includeJoints
+        ? Object.keys(pose)
+            .filter((k) => k !== 'partRoll' && pose[k] && typeof pose[k].x === 'number')
+            .map(jn)
+            .join('')
+        : '',
     ].join('');
   };
   const drawPartsOnly = (pose, stroke, opacity) => partArtSvg(pose, stroke, opacity, true);
@@ -142,6 +151,8 @@ function ensurePartArt() {
     selectedHandle: 'anchor',
     simple4View: false,
     fourViewFace: 'front',
+    cyclerPaintIndex: 0,
+    defaultCyclerSides: 8,
     art: {},
     requireVisitBeforeStagePose: false,
   };
@@ -191,87 +202,204 @@ function ensurePartArt() {
   if (typeof state.partStudio.requireVisitBeforeStagePose !== 'boolean') {
     state.partStudio.requireVisitBeforeStagePose = !!state.partStudio.wizardDone;
   }
+  state.stagePartRollPick ??= 'torso';
+  state.stagePartRollPick = PART_TABS.includes(state.stagePartRollPick) ? state.stagePartRollPick : 'torso';
   for (const p of PART_TABS) {
     const slot = state.partStudio.art[p];
     if (slot == null) {
       state.partStudio.art[p] = [];
       continue;
     }
-    if (isFourViewArt(slot)) continue;
-    if (Array.isArray(slot)) continue;
-    state.partStudio.art[p] = [];
+    state.partStudio.art[p] = migrateArtSlotToCycler(slot);
   }
+  if (!Number.isFinite(state.partStudio.cyclerPaintIndex)) {
+    const f = state.partStudio.fourViewFace;
+    const fi = FOUR_FACES.indexOf(f);
+    state.partStudio.cyclerPaintIndex = fi >= 0 ? fi : 0;
+  }
+  state.partStudio.defaultCyclerSides = clampCyclerSides(state.partStudio.defaultCyclerSides ?? 8);
   for (const fr of state.frames) {
     let y = Number(fr.viewYaw);
     if (!Number.isFinite(y)) y = 0;
     fr.viewYaw = ((y % 360) + 360) % 360;
+    fr.pose ??= defaultPose();
+    if (!fr.pose.partRoll || typeof fr.pose.partRoll !== 'object') fr.pose.partRoll = {};
   }
 }
 
 const FOUR_FACES = ['front', 'right', 'back', 'left'];
 
-function isFourViewArt(v) {
-  return !!(v && typeof v === 'object' && v.type === 'four' && v.faces && typeof v.faces === 'object');
+function clampCyclerSides(n) {
+  const x = Math.floor(Number(n));
+  if (!Number.isFinite(x)) return 8;
+  return Math.max(4, Math.min(24, x));
 }
 
-function toFourViewArt(slot) {
-  const strokes = Array.isArray(slot) ? [...slot] : isFourViewArt(slot) ? [...(slot.faces?.front || [])] : [];
-  return {
-    type: 'four',
-    faces: { front: strokes, right: [], back: [], left: [] },
-  };
+function isCyclerArt(v) {
+  if (!v || typeof v !== 'object') return false;
+  if (v.type === 'cycler' && Array.isArray(v.faceStrokes) && Number.isFinite(v.sides)) return true;
+  if (v.type === 'four' && v.faces && typeof v.faces === 'object') return true;
+  return false;
+}
+
+/** Normalize legacy `four` or fix `cycler` arrays (mutates / returns slot). */
+function migrateArtSlotToCycler(slot) {
+  if (Array.isArray(slot)) return slot;
+  if (!slot || typeof slot !== 'object') return [];
+  if (slot.type === 'cycler' && Array.isArray(slot.faceStrokes)) {
+    const sides = clampCyclerSides(slot.sides);
+    slot.type = 'cycler';
+    slot.sides = sides;
+    while (slot.faceStrokes.length < sides) slot.faceStrokes.push([]);
+    slot.faceStrokes.length = sides;
+    slot.widthNorm = Math.max(0.35, Math.min(2.2, Number(slot.widthNorm) || 1));
+    slot.heightNorm = Math.max(0.35, Math.min(2.2, Number(slot.heightNorm) || 1));
+    return slot;
+  }
+  if (slot.type === 'four' && slot.faces && typeof slot.faces === 'object') {
+    return {
+      type: 'cycler',
+      sides: 4,
+      faceStrokes: [
+        Array.isArray(slot.faces.front) ? [...slot.faces.front] : [],
+        Array.isArray(slot.faces.right) ? [...slot.faces.right] : [],
+        Array.isArray(slot.faces.back) ? [...slot.faces.back] : [],
+        Array.isArray(slot.faces.left) ? [...slot.faces.left] : [],
+      ],
+      widthNorm: Math.max(0.35, Math.min(2.2, Number(slot.widthNorm) || 1)),
+      heightNorm: Math.max(0.35, Math.min(2.2, Number(slot.heightNorm) || 1)),
+    };
+  }
+  return [];
+}
+
+function toCyclerArt(slot, sides) {
+  const n = clampCyclerSides(sides);
+  const strokes = Array.isArray(slot)
+    ? [...slot]
+    : isCyclerArt(slot)
+      ? [...(slot.faceStrokes?.[0] || [])]
+      : [];
+  const faceStrokes = Array.from({ length: n }, (_, i) => (i === 0 ? strokes : []));
+  return { type: 'cycler', sides: n, faceStrokes, widthNorm: 1, heightNorm: 1 };
 }
 
 function collapseArtToFlat(slot) {
-  if (isFourViewArt(slot)) return [...(slot.faces?.front || [])];
+  if (isCyclerArt(slot)) return [...(slot.faceStrokes?.[0] || [])];
   return Array.isArray(slot) ? [...slot] : [];
 }
 
-function yawToFace(deg) {
-  const a = ((Number(deg) || 0) % 360 + 360) % 360;
-  if (a >= 315 || a < 45) return 'front';
-  if (a < 135) return 'right';
-  if (a < 225) return 'back';
-  return 'left';
+function yawToFaceIndex(deg, sides) {
+  const s = clampCyclerSides(sides);
+  const a = (((Number(deg) || 0) % 360) + 360) % 360;
+  let idx = Math.floor((a / 360) * s);
+  if (idx >= s) idx = s - 1;
+  return idx;
 }
 
 function frameViewYaw() {
   return Number(current().viewYaw) || 0;
 }
 
-function renderFaceFromYaw() {
-  return yawToFace(frameViewYaw());
+function cyclerFaceLabel(i, sides) {
+  const s = clampCyclerSides(sides);
+  if (s === 4 && FOUR_FACES[i] != null) return FOUR_FACES[i];
+  return `side ${i + 1}/${s}`;
 }
 
-/** Strokes drawn on stage for this part (respects 4-side + turntable). */
+function getPartRollDegForPart(part) {
+  const pr = current().pose?.partRoll;
+  if (!pr || typeof pr !== 'object') return 0;
+  const v = Number(pr[part]);
+  return Number.isFinite(v) ? v : 0;
+}
+
+/** Which face label is toward the camera for the active Part Studio tab (readout). */
+function renderFaceFromYaw() {
+  const part = state.partStudio.part;
+  const slot = state.partStudio.art[part];
+  if (!state.partStudio.simple4View || !isCyclerArt(slot)) return 'front';
+  const sides = clampCyclerSides(slot.sides);
+  const yaw = frameViewYaw() + getPartRollDegForPart(part);
+  return cyclerFaceLabel(yawToFaceIndex(yaw, sides), sides);
+}
+
+/** Strokes drawn on stage for this part (cycler + turntable + per-part roll). */
 function getStrokesListForPartRender(part) {
   const slot = state.partStudio.art[part];
-  if (state.partStudio.simple4View && isFourViewArt(slot)) {
-    const face = renderFaceFromYaw();
-    return slot.faces[face] || [];
+  if (state.partStudio.simple4View && isCyclerArt(slot)) {
+    const sides = clampCyclerSides(slot.sides);
+    const yaw = frameViewYaw() + getPartRollDegForPart(part);
+    const fi = yawToFaceIndex(yaw, sides);
+    return slot.faceStrokes[fi] || [];
   }
-  if (isFourViewArt(slot)) return slot.faces?.front || [];
+  if (isCyclerArt(slot)) return slot.faceStrokes?.[0] || [];
   return Array.isArray(slot) ? slot : [];
 }
 
-/** Mutable stroke array for the active Part Studio tab (selected side in 4-view). */
+/** Mutable stroke array for the active Part Studio tab (selected cycler facet). */
 function getEditableStrokesForPart(part) {
   let slot = state.partStudio.art[part];
   if (state.partStudio.simple4View) {
-    if (!isFourViewArt(slot)) {
-      state.partStudio.art[part] = toFourViewArt(slot);
+    if (!isCyclerArt(slot)) {
+      const n = clampCyclerSides(state.partStudio.defaultCyclerSides ?? 8);
+      state.partStudio.art[part] = toCyclerArt(slot, n);
       slot = state.partStudio.art[part];
     }
-    const face = state.partStudio.fourViewFace || 'front';
-    if (!slot.faces[face]) slot.faces[face] = [];
-    return slot.faces[face];
+    const sides = clampCyclerSides(slot.sides);
+    let idx = Math.floor(Number(state.partStudio.cyclerPaintIndex));
+    if (!Number.isFinite(idx)) idx = 0;
+    idx = ((idx % sides) + sides) % sides;
+    if (!slot.faceStrokes[idx]) slot.faceStrokes[idx] = [];
+    return slot.faceStrokes[idx];
   }
-  if (isFourViewArt(slot)) {
-    if (!slot.faces.front) slot.faces.front = [];
-    return slot.faces.front;
+  if (isCyclerArt(slot)) {
+    if (!slot.faceStrokes[0]) slot.faceStrokes[0] = [];
+    return slot.faceStrokes[0];
   }
   if (!Array.isArray(slot)) state.partStudio.art[part] = [];
   return state.partStudio.art[part];
+}
+
+function getCyclerDimsForPart(part) {
+  const slot = state.partStudio.art[part];
+  if (isCyclerArt(slot)) {
+    return {
+      wx: Math.max(0.35, Math.min(2.2, Number(slot.widthNorm) || 1)),
+      wy: Math.max(0.35, Math.min(2.2, Number(slot.heightNorm) || 1)),
+    };
+  }
+  return { wx: 1, wy: 1 };
+}
+
+function partCenterWorld(part, pose) {
+  if (!pose) return { x: W * 0.5, y: H * 0.5 };
+  if (part === 'head') return { x: pose.head.x, y: pose.head.y };
+  if (part === 'leftHand' || part === 'rightHand' || part === 'leftFoot' || part === 'rightFoot') {
+    const p = pose[part];
+    return { x: p.x, y: p.y };
+  }
+  const links = {
+    torso: ['neck', 'hip'],
+    leftArm: ['neck', 'leftHand'],
+    rightArm: ['neck', 'rightHand'],
+    leftLeg: ['hip', 'leftFoot'],
+    rightLeg: ['hip', 'rightFoot'],
+  };
+  const pair = links[part];
+  if (!pair) return { x: W * 0.5, y: H * 0.5 };
+  const a = pose[pair[0]];
+  const b = pose[pair[1]];
+  return { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
+}
+
+function rotateAround(px, py, cx, cy, deg) {
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = px - cx;
+  const dy = py - cy;
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
 }
 
 const PRESET_DEFAULT_ID = {
@@ -649,18 +777,33 @@ function mapNormToWorld(part, pose, u, v) {
   return { x: px, y: py };
 }
 
+function mapNormToWorldScaled(part, pose, u, v) {
+  const base = mapNormToWorld(part, pose, u, v);
+  const { wx, wy } = getCyclerDimsForPart(part);
+  if (wx === 1 && wy === 1) return base;
+  const c = partCenterWorld(part, pose);
+  return { x: c.x + (base.x - c.x) * wx, y: c.y + (base.y - c.y) * wy };
+}
+
 function partStrokePathD(part, pose, s) {
   const pts = s.points;
   if (!pts?.length) return '';
   const fmt = (x, y) => `${Math.round(x * 100) / 100} ${Math.round(y * 100) / 100}`;
-  const p0w = mapNormToWorld(part, pose, pts[0].u || 0, pts[0].v || 0);
+  const roll = getPartRollDegForPart(part);
+  const c = partCenterWorld(part, pose);
+  const mapPt = (x, y) => (roll ? rotateAround(x, y, c.x, c.y, roll) : { x, y });
+  const p0b = mapNormToWorldScaled(part, pose, pts[0].u || 0, pts[0].v || 0);
+  const p0w = mapPt(p0b.x, p0b.y);
   let d = `M ${fmt(p0w.x, p0w.y)}`;
   if (pts.length < 2) return d;
   for (let i = 0; i < pts.length - 1; i++) {
     const { c1u, c1v, c2u, c2v } = segmentControlsNorm(pts, i);
-    const c1w = mapNormToWorld(part, pose, c1u, c1v);
-    const c2w = mapNormToWorld(part, pose, c2u, c2v);
-    const p1w = mapNormToWorld(part, pose, pts[i + 1].u || 0, pts[i + 1].v || 0);
+    const c1b = mapNormToWorldScaled(part, pose, c1u, c1v);
+    const c2b = mapNormToWorldScaled(part, pose, c2u, c2v);
+    const p1b = mapNormToWorldScaled(part, pose, pts[i + 1].u || 0, pts[i + 1].v || 0);
+    const c1w = mapPt(c1b.x, c1b.y);
+    const c2w = mapPt(c2b.x, c2b.y);
+    const p1w = mapPt(p1b.x, p1b.y);
     d += ` C ${fmt(c1w.x, c1w.y)} ${fmt(c2w.x, c2w.y)} ${fmt(p1w.x, p1w.y)}`;
   }
   return d;
@@ -725,21 +868,33 @@ function getPartStudio3dSnapshot() {
   const slot = state.partStudio.art[part];
   const pose = current().pose;
   const yaw = frameViewYaw();
-  if (state.partStudio.simple4View && isFourViewArt(slot)) {
+  if (state.partStudio.simple4View && isCyclerArt(slot)) {
     return {
       part,
       pose,
-      mode: 'four',
+      mode: 'cycler',
       viewYaw: yaw,
-      faces: {
-        front: slot.faces?.front || [],
-        right: slot.faces?.right || [],
-        back: slot.faces?.back || [],
-        left: slot.faces?.left || [],
-      },
+      sides: clampCyclerSides(slot.sides),
+      faceStrokes: (slot.faceStrokes || []).map((arr) => [...(arr || [])]),
+      widthNorm: Number(slot.widthNorm) || 1,
+      heightNorm: Number(slot.heightNorm) || 1,
     };
   }
   return { part, pose, mode: 'flat', viewYaw: yaw, strokes: [...getStrokesListForPartRender(part)] };
+}
+
+function buildCyclerFaceButtonsHtml() {
+  const part = state.partStudio.part;
+  const slot = state.partStudio.art[part];
+  if (!isCyclerArt(slot)) return '';
+  const sides = clampCyclerSides(slot.sides);
+  let idx = Math.floor(Number(state.partStudio.cyclerPaintIndex));
+  if (!Number.isFinite(idx)) idx = 0;
+  idx = ((idx % sides) + sides) % sides;
+  return Array.from({ length: sides }, (_, i) => {
+    const lab = cyclerFaceLabel(i, sides);
+    return `<button type="button" class="small ${i === idx ? 'good' : ''}" data-cycler-face="${i}">${lab}</button>`;
+  }).join('');
 }
 
 function render() {
@@ -749,6 +904,18 @@ function render() {
   if (!state.partStudio.wizardDone) {
     state.partStudio.part = PART_TABS[state.partStudio.wizardStep];
   }
+  const cyclerFaceButtonsHtml = buildCyclerFaceButtonsHtml();
+  const ap = state.partStudio.part;
+  const aslot = state.partStudio.art[ap];
+  const cyclerSidesSelected = isCyclerArt(aslot)
+    ? clampCyclerSides(aslot.sides)
+    : clampCyclerSides(state.partStudio.defaultCyclerSides);
+  const cyclerW = isCyclerArt(aslot) ? Number(aslot.widthNorm) || 1 : 1;
+  const cyclerH = isCyclerArt(aslot) ? Number(aslot.heightNorm) || 1 : 1;
+  const prVal = Math.round(getPartRollDegForPart(state.stagePartRollPick));
+  const cyclerSideOpts = [4, 6, 8, 12, 16, 24]
+    .map((n) => `<option value="${n}" ${n === cyclerSidesSelected ? 'selected' : ''}>${n} sides</option>`)
+    .join('');
   app.innerHTML = `
     <div class="wrap">
       <header>
@@ -788,10 +955,23 @@ function render() {
             <button id="zoomReset">Reset Zoom</button>
           </div>
           <div class="controls view-yaw-row ${state.partStudio.simple4View ? '' : 'is-hidden'}">
-            <label class="hint">Turntable (4-side)
+            <label class="hint">Turntable (which facet faces camera)
               <input id="viewYaw" type="range" min="0" max="360" step="1" value="${Math.round(frameViewYaw())}" />
             </label>
             <span class="hint" id="viewYawReadout">${Math.round(frameViewYaw())}° → ${renderFaceFromYaw()} on stage</span>
+          </div>
+          <div class="controls part-roll-row ${state.partStudio.simple4View ? '' : 'is-hidden'}">
+            <label class="hint">Art roll (2D, this frame)
+              <select id="stagePartRollPick">
+                ${PART_TABS.map(
+                  (p) =>
+                    `<option value="${p}" ${state.stagePartRollPick === p ? 'selected' : ''}>${p}</option>`,
+                ).join('')}
+              </select>
+            </label>
+            <label class="hint"><span id="partRollReadout">${prVal}°</span>
+              <input id="partRollDeg" type="range" min="-180" max="180" step="1" value="${prVal}" />
+            </label>
           </div>
           <div class="hint">Frame ${state.index + 1} / ${state.frames.length} · ${
             playbackOnly
@@ -799,7 +979,7 @@ function render() {
               : state.partStudio.requireVisitBeforeStagePose && state.partStudio.wizardDone
                 ? 'Tap the rig to open Part Studio first, then close it to pose joints'
                 : state.partStudio.simple4View
-                  ? 'Pose the rig · each part has Front/Back/Left/Right art · Turntable picks which side shows'
+                  ? 'Cycler parts: turntable + per-part roll · each facet is a slice you paint in Part Studio'
                   : 'Drag joints to pose'
           } · Space = play/pause</div>
           <div class="stage-viewport">
@@ -831,19 +1011,25 @@ function render() {
           </div>
           <label class="simple-4-toggle hint">
             <input type="checkbox" id="simple4View" ${state.partStudio.simple4View ? 'checked' : ''} />
-            Simple 4-side mode (draw front / back / left / right — still 2D, turntable swaps sides)
+            Part cyclers (multi-side prism — 2D art per facet, 3D preview is a polygon barrel)
           </label>
           <div class="simple-four-panel ${state.partStudio.simple4View ? '' : 'is-hidden'}">
-            <div class="hint">Painting side (this part only)</div>
-            <div class="four-face-bar">
-              ${FOUR_FACES.map(
-                (f) =>
-                  `<button type="button" class="small ${state.partStudio.fourViewFace === f ? 'good' : ''}" data-four-face="${f}">${f}</button>`,
-              ).join('')}
+            <div class="hint">Facet to paint (this body tab) · rotate turntable on the stage to preview other facets</div>
+            <label class="hint">Sides on this part
+              <select id="cyclerSidesPick">${cyclerSideOpts}</select>
+            </label>
+            <div class="cycler-face-bar">${cyclerFaceButtonsHtml}</div>
+            <div class="cycler-size-row">
+              <label class="hint">Width
+                <input id="cyclerWidth" type="range" min="0.4" max="2.2" step="0.05" value="${cyclerW}" />
+              </label>
+              <label class="hint">Height
+                <input id="cyclerHeight" type="range" min="0.4" max="2.2" step="0.05" value="${cyclerH}" />
+              </label>
             </div>
             <label>Brush color <input id="simpleBrushColor" type="color" value="${state.partStudio.brushColor}" /></label>
             <label>Brush size <input id="simpleBrushSize" type="range" min="2" max="18" step="1" value="${state.partStudio.brushSize}" /></label>
-            <button type="button" id="simpleClearFace" class="small danger">Clear this side</button>
+            <button type="button" id="simpleClearFace" class="small danger">Clear this facet</button>
           </div>
           <div class="face-studio-tools ${state.partStudio.simple4View ? 'is-hidden' : ''}">
             <label>Mode
@@ -874,13 +1060,13 @@ function render() {
               <canvas id="partStudioCanvas" width="360" height="360" aria-label="Part Studio canvas"></canvas>
             </div>
             <div class="part-3d-col">
-              <div class="hint">3D preview · drag to orbit (Turntable syncs box in 4-side mode)</div>
+              <div class="hint">3D preview · drag to orbit (prism matches facet count + width/height)</div>
               <div id="part3dMount" class="part-3d-mount" aria-label="Three.js part preview"></div>
             </div>
           </div>
           <p class="hint">${
             state.partStudio.simple4View
-              ? '4-side: pick a body tab, pick Front/Right/Back/Left, draw. Use Turntable on the stage to preview. Full vector tools return when you turn this off (other sides are kept but only Front is used in normal mode).'
+              ? 'Cyclers: set facet count and paint each slice. Turntable + art roll on the stage control which drawing shows and how it spins with the stick rig. Turning cyclers off flattens to the front facet only.'
               : 'Pre-drawn: pick a shape for this body part, then Apply. Draw / reshape as needed. Play mode hides the default stick; only Part Studio art shows.'
           }</p>
         </div>
@@ -955,6 +1141,13 @@ function render() {
       state.partStudio.part = tab;
       const idx = PART_TABS.indexOf(tab);
       if (idx >= 0 && !state.partStudio.wizardDone) state.partStudio.wizardStep = idx;
+      const slot = state.partStudio.art[tab];
+      if (state.partStudio.simple4View && isCyclerArt(slot)) {
+        const s = clampCyclerSides(slot.sides);
+        let pi = Math.floor(Number(state.partStudio.cyclerPaintIndex));
+        if (!Number.isFinite(pi)) pi = 0;
+        state.partStudio.cyclerPaintIndex = ((pi % s) + s) % s;
+      }
       state.partStudio.selectedStroke = -1;
       state.partStudio.selectedPoint = -1;
       state.partStudio.selectedHandle = 'anchor';
@@ -1018,8 +1211,9 @@ function render() {
   });
   document.getElementById('simple4View')?.addEventListener('change', (e) => {
     if (e.target.checked) {
+      const n = clampCyclerSides(state.partStudio.defaultCyclerSides ?? 8);
       for (const p of PART_TABS) {
-        if (!isFourViewArt(state.partStudio.art[p])) state.partStudio.art[p] = toFourViewArt(state.partStudio.art[p]);
+        if (!isCyclerArt(state.partStudio.art[p])) state.partStudio.art[p] = toCyclerArt(state.partStudio.art[p], n);
       }
       state.partStudio.simple4View = true;
       state.partStudio.mode = 'draw';
@@ -1032,12 +1226,61 @@ function render() {
     partDrawing = null;
     render();
   });
-  document.querySelectorAll('[data-four-face]').forEach((btn) => {
+  document.querySelectorAll('[data-cycler-face]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      state.partStudio.fourViewFace = btn.getAttribute('data-four-face') || 'front';
+      state.partStudio.cyclerPaintIndex = Number(btn.getAttribute('data-cycler-face')) || 0;
       partDrawing = null;
       render();
     });
+  });
+  document.getElementById('cyclerSidesPick')?.addEventListener('change', (e) => {
+    if (!state.partStudio.simple4View) return;
+    const part = state.partStudio.part;
+    let slot = state.partStudio.art[part];
+    if (!isCyclerArt(slot)) return;
+    const n = clampCyclerSides(e.target.value);
+    const old = slot.faceStrokes || [];
+    const newArr = Array.from({ length: n }, (_, i) => (old[i] ? [...old[i]] : []));
+    slot.sides = n;
+    slot.faceStrokes = newArr;
+    state.partStudio.defaultCyclerSides = n;
+    let idx = Math.floor(Number(state.partStudio.cyclerPaintIndex));
+    if (!Number.isFinite(idx)) idx = 0;
+    state.partStudio.cyclerPaintIndex = ((idx % n) + n) % n;
+    partDrawing = null;
+    render();
+  });
+  document.getElementById('cyclerWidth')?.addEventListener('input', (e) => {
+    const part = state.partStudio.part;
+    const slot = state.partStudio.art[part];
+    if (!isCyclerArt(slot)) return;
+    slot.widthNorm = Math.max(0.35, Math.min(2.2, Number(e.target.value) || 1));
+    drawPartStudioCanvas();
+    document.getElementById('stage').innerHTML = stageSvg(!!state.playing);
+    markPartStudio3dDirty();
+  });
+  document.getElementById('cyclerHeight')?.addEventListener('input', (e) => {
+    const part = state.partStudio.part;
+    const slot = state.partStudio.art[part];
+    if (!isCyclerArt(slot)) return;
+    slot.heightNorm = Math.max(0.35, Math.min(2.2, Number(e.target.value) || 1));
+    drawPartStudioCanvas();
+    document.getElementById('stage').innerHTML = stageSvg(!!state.playing);
+    markPartStudio3dDirty();
+  });
+  document.getElementById('stagePartRollPick')?.addEventListener('change', (e) => {
+    state.stagePartRollPick = e.target.value || 'torso';
+    render();
+  });
+  document.getElementById('partRollDeg')?.addEventListener('input', (e) => {
+    const part = state.stagePartRollPick;
+    const v = Math.max(-180, Math.min(180, Number(e.target.value) || 0));
+    current().pose.partRoll ??= {};
+    current().pose.partRoll[part] = v;
+    const ro = document.getElementById('partRollReadout');
+    if (ro) ro.textContent = `${Math.round(v)}°`;
+    document.getElementById('stage').innerHTML = stageSvg(!!state.playing);
+    markPartStudio3dDirty();
   });
   document.getElementById('viewYaw')?.addEventListener('input', (e) => {
     current().viewYaw = Math.max(0, Math.min(360, Number(e.target.value) || 0));
@@ -1318,9 +1561,14 @@ function drawPartStudioCanvas() {
   }
   const strokes = getEditableStrokesForPart(part);
   if (state.partStudio.simple4View) {
+    const slotP = state.partStudio.art[part];
+    const sidesP = isCyclerArt(slotP) ? clampCyclerSides(slotP.sides) : 4;
+    let idxP = Math.floor(Number(state.partStudio.cyclerPaintIndex));
+    if (!Number.isFinite(idxP)) idxP = 0;
+    idxP = ((idxP % sidesP) + sidesP) % sidesP;
     ctx.fillStyle = '#334155';
     ctx.font = '600 13px system-ui,sans-serif';
-    ctx.fillText(`Painting: ${state.partStudio.fourViewFace}`, 12, 22);
+    ctx.fillText(`Facet: ${cyclerFaceLabel(idxP, sidesP)}`, 12, 22);
   }
   for (let si = 0; si < strokes.length; si++) {
     const s = strokes[si];

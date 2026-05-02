@@ -315,27 +315,35 @@ class PartStudioPreview3D {
       return;
     }
 
-    if (mode === 'four' && snap.faces) {
-      const sz = 0.95;
-      const geo = new T.BoxGeometry(sz, sz, sz);
-      const mkFace = (strokes) => {
+    if (mode === 'cycler' && Array.isArray(snap.faceStrokes) && Number.isFinite(snap.sides)) {
+      const sides = Math.max(4, Math.min(24, Math.floor(Number(snap.sides))));
+      const wx = Math.max(0.35, Math.min(2.2, Number(snap.widthNorm) || 1));
+      const hy = Math.max(0.35, Math.min(2.2, Number(snap.heightNorm) || 1));
+      const r = 0.48 * wx;
+      const h = 0.95 * hy;
+      const mkFaceMat = (strokes) => {
         const cv = drawStrokesTexture(strokes, 200);
         const tex = new T.CanvasTexture(cv);
         if (T.SRGBColorSpace) tex.colorSpace = T.SRGBColorSpace;
         tex.needsUpdate = true;
         return new T.MeshStandardMaterial({ map: tex, roughness: 0.65, metalness: 0.08 });
       };
-      const f = snap.faces;
-      const matRight = mkFace(f.right || []);
-      const matLeft = mkFace(f.left || []);
-      const matTop = new T.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
-      const matBottom = new T.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 });
-      const matFront = mkFace(f.front || []);
-      const matBack = mkFace(f.back || []);
-      const mesh = new T.Mesh(geo, [matRight, matLeft, matTop, matBottom, matFront, matBack]);
+      const group = new T.Group();
+      for (let i = 0; i < sides; i++) {
+        const wFace = 2 * r * Math.sin(Math.PI / Math.max(3, sides));
+        const geo = new T.PlaneGeometry(wFace, h, 1, 1);
+        const strokes = snap.faceStrokes[i] || [];
+        const mesh = new T.Mesh(geo, mkFaceMat(strokes));
+        const ang = ((i + 0.5) / sides) * Math.PI * 2;
+        const ox = Math.cos(ang);
+        const oz = Math.sin(ang);
+        mesh.position.set(r * ox, 0, r * oz);
+        mesh.quaternion.setFromUnitVectors(new T.Vector3(0, 0, 1), new T.Vector3(ox, 0, oz));
+        group.add(mesh);
+      }
       const rad = ((Number(viewYaw) || 0) * Math.PI) / 180;
-      mesh.rotation.y = -rad;
-      this.meshGroup.add(mesh);
+      group.rotation.y = -rad;
+      this.meshGroup.add(group);
       this.center = new T.Vector3(0, 0, 0);
     } else {
       const strokes = snap.strokes || [];
