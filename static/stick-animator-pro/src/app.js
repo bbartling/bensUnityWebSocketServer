@@ -27,7 +27,9 @@ let state = {
   onionCount: 3,
   onionOpacity: 0.32,
   partStudio: {
-    open: false,
+    open: true,
+    wizardDone: false,
+    wizardStep: 0,
     part: 'head',
     mode: 'draw',
     presetStyle: 'classic',
@@ -46,6 +48,7 @@ let state = {
 let dragJoint = null;
 let partDrawing = null;
 let timer = null;
+let playbackGeneration = 0;
 
 function clone(v) {
   return JSON.parse(JSON.stringify(v));
@@ -55,12 +58,22 @@ function current() {
   return state.frames[state.index];
 }
 
+function hasSubstantialPartArt() {
+  ensurePartArt();
+  for (const part of PART_TABS) {
+    const strokes = state.partStudio.art[part];
+    if (!strokes?.length) continue;
+    for (const s of strokes) {
+      if (s?.points && s.points.length >= 2) return true;
+    }
+  }
+  return false;
+}
+
 function stageSvg(playbackOnly = false) {
   const p = current().pose;
   const layers = [];
-  const line = (a, b) => `<line x1="${p[a].x}" y1="${p[a].y}" x2="${p[b].x}" y2="${p[b].y}" stroke="#0f172a" stroke-width="14" stroke-linecap="round"/>`;
-  const joint = (k) =>
-    `<circle data-joint="${k}" draggable="false" cx="${p[k].x}" cy="${p[k].y}" r="15" fill="#7dd3fc" stroke="#ffffff" stroke-width="3"/>`;
+  const hideBaseRig = !!playbackOnly && hasSubstantialPartArt();
   const limbs = [
     ['head', 'neck'], ['neck', 'hip'],
     ['neck', 'leftElbow'], ['leftElbow', 'leftHand'],
@@ -78,6 +91,7 @@ function stageSvg(playbackOnly = false) {
       includeJoints ? Object.keys(pose).map(jn).join('') : '',
     ].join('');
   };
+  const drawPartsOnly = (pose, stroke, opacity) => partArtSvg(pose, stroke, opacity, true);
   if (!playbackOnly && state.onionSkin) {
     for (let n = state.onionCount; n >= 1; n--) {
       const prev = state.frames[state.index - n];
@@ -85,10 +99,14 @@ function stageSvg(playbackOnly = false) {
       const depth = state.onionCount - n + 1;
       const t = depth / state.onionCount;
       const op = state.onionOpacity * (0.24 + 0.76 * t);
-      layers.push(drawPose(prev.pose, '#7c8597', op, false));
+      layers.push(
+        hideBaseRig ? drawPartsOnly(prev.pose, '#7c8597', op) : drawPose(prev.pose, '#7c8597', op, false),
+      );
     }
   }
-  layers.push(drawPose(p, '#0f172a', 1, !playbackOnly));
+  layers.push(
+    hideBaseRig ? drawPartsOnly(p, '#0f172a', 1) : drawPose(p, '#0f172a', 1, !playbackOnly),
+  );
   return `
     <defs>
       <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -103,7 +121,9 @@ function stageSvg(playbackOnly = false) {
 
 function ensurePartArt() {
   state.partStudio ??= {
-    open: false,
+    open: true,
+    wizardDone: false,
+    wizardStep: 0,
     part: 'head',
     mode: 'draw',
     presetStyle: 'classic',
@@ -123,6 +143,14 @@ function ensurePartArt() {
   state.partStudio.selectedHandle = ['anchor', 'out', 'in'].includes(state.partStudio.selectedHandle)
     ? state.partStudio.selectedHandle
     : 'anchor';
+  state.partStudio.wizardDone = !!state.partStudio.wizardDone;
+  const ws = Number(state.partStudio.wizardStep);
+  state.partStudio.wizardStep = Number.isFinite(ws)
+    ? Math.max(0, Math.min(PART_TABS.length - 1, Math.floor(ws)))
+    : 0;
+  if (typeof state.partStudio.wizardDone !== 'boolean') {
+    state.partStudio.wizardDone = true;
+  }
   state.partStudio.art ??= {};
   for (const p of PART_TABS) {
     if (!Array.isArray(state.partStudio.art[p])) state.partStudio.art[p] = [];
@@ -316,9 +344,46 @@ function partArtSvg(pose, stroke, opacity, playbackOnly) {
   return out.join('');
 }
 
+function scheduleNextPlaybackTickFromCurrentGen() {
+  if (!state.playing) return;
+  const gen = playbackGeneration;
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => {
+    timer = null;
+    if (!state.playing || gen !== playbackGeneration) return;
+    state.index = (state.index + 1) % state.frames.length;
+    render();
+    scheduleNextPlaybackTickFromCurrentGen();
+  }, currentPlayDelayMs());
+}
+
+function startPlayback() {
+  state.playing = true;
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  playbackGeneration++;
+  state.index = (state.index + 1) % state.frames.length;
+  render();
+  scheduleNextPlaybackTickFromCurrentGen();
+}
+
+function stopPlayback() {
+  state.playing = false;
+  playbackGeneration++;
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+}
+
 function render() {
   const playbackOnly = !!state.playing;
   ensurePartArt();
+  if (!state.partStudio.wizardDone) {
+    state.partStudio.part = PART_TABS[state.partStudio.wizardStep];
+  }
   app.innerHTML = `
     <div class="wrap">
       <header>
@@ -327,7 +392,7 @@ function render() {
           <div class="hint">Restored in-repo build so /stick-animator-pro/ works on Render and local.</div>
         </div>
         <div class="controls">
-          <button id="play" class="good">${state.playing ? 'Pause' : 'Play'}</button>
+          <button type="button" id="play" class="good">${state.playing ? 'Pause' : 'Play'}</button>
           <label class="hint">Play FPS
             <select id="playFps">
               <option value="0" ${state.playFps === 0 ? 'selected' : ''}>Use frame timing</option>
@@ -357,7 +422,13 @@ function render() {
             <label class="hint">Zoom <input id="zoomRange" type="range" min="0.5" max="3" step="0.1" value="${state.zoom}" /></label>
             <button id="zoomReset">Reset Zoom</button>
           </div>
-          <div class="hint">Frame ${state.index + 1} / ${state.frames.length} · ${playbackOnly ? 'Playback view (clean)' : 'Drag joints to pose'}</div>
+          <div class="hint">Frame ${state.index + 1} / ${state.frames.length} · ${
+            playbackOnly
+              ? hasSubstantialPartArt()
+                ? 'Playback — custom parts only (rig hidden)'
+                : 'Playback view (clean)'
+              : 'Drag joints to pose'
+          } · Space = play/pause</div>
           <div class="stage-viewport">
             <svg id="stage" style="width:${Math.round(state.zoom * 100)}%;max-width:none;" draggable="false" viewBox="0 0 ${W} ${H}" aria-label="Animation stage">${stageSvg(playbackOnly)}</svg>
           </div>
@@ -368,8 +439,20 @@ function render() {
         <div class="face-studio-card">
           <div class="face-studio-head">
             <h3>Part Studio (Vector Reshape)</h3>
-            <button id="closePartStudio" class="small">Close</button>
+            <button id="closePartStudio" class="small">${state.partStudio.wizardDone ? 'Close' : 'Skip setup'}</button>
           </div>
+          ${
+            !state.partStudio.wizardDone
+              ? `<div class="part-wizard-bar">
+            <strong>Setup ${state.partStudio.wizardStep + 1} / ${PART_TABS.length}</strong>
+            <span class="hint">Edit <code>${state.partStudio.part}</code>, then continue.</span>
+            <div class="part-wizard-actions">
+              <button type="button" id="wizPrev" class="small" ${state.partStudio.wizardStep <= 0 ? 'disabled' : ''}>← Prev part</button>
+              <button type="button" id="wizNext" class="small good">${state.partStudio.wizardStep >= PART_TABS.length - 1 ? 'Start animating' : 'Next part →'}</button>
+            </div>
+          </div>`
+              : ''
+          }
           <div class="part-tabs">
             ${PART_TABS.map((p) => `<button class="small ${state.partStudio.part === p ? 'good' : ''}" data-part-tab="${p}">${p}</button>`).join('')}
           </div>
@@ -404,8 +487,11 @@ function render() {
   document.getElementById('playFps').addEventListener('change', (e) => {
     state.playFps = Math.max(0, Math.min(60, Number(e.target.value || 0)));
     if (state.playing) {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(playLoop, currentPlayDelayMs());
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      scheduleNextPlaybackTickFromCurrentGen();
     }
   });
   document.getElementById('prev').addEventListener('click', () => { state.index = (state.index - 1 + state.frames.length) % state.frames.length; render(); });
@@ -420,11 +506,48 @@ function render() {
     state.index += 1;
     render();
   });
-  document.getElementById('openPartStudio').addEventListener('click', () => { state.partStudio.open = true; render(); });
-  document.getElementById('closePartStudio').addEventListener('click', () => { state.partStudio.open = false; partDrawing = null; render(); });
+  document.getElementById('openPartStudio').addEventListener('click', () => {
+    state.partStudio.open = true;
+    render();
+  });
+  document.getElementById('closePartStudio').addEventListener('click', () => {
+    state.partStudio.open = false;
+    partDrawing = null;
+    if (!state.partStudio.wizardDone) {
+      state.partStudio.wizardDone = true;
+    }
+    render();
+  });
+  const wizPrev = document.getElementById('wizPrev');
+  const wizNext = document.getElementById('wizNext');
+  if (wizPrev) {
+    wizPrev.addEventListener('click', () => {
+      state.partStudio.wizardStep = Math.max(0, state.partStudio.wizardStep - 1);
+      state.partStudio.part = PART_TABS[state.partStudio.wizardStep];
+      partDrawing = null;
+      render();
+    });
+  }
+  if (wizNext) {
+    wizNext.addEventListener('click', () => {
+      if (state.partStudio.wizardStep >= PART_TABS.length - 1) {
+        state.partStudio.wizardDone = true;
+        state.partStudio.open = false;
+        partDrawing = null;
+      } else {
+        state.partStudio.wizardStep += 1;
+        state.partStudio.part = PART_TABS[state.partStudio.wizardStep];
+        partDrawing = null;
+      }
+      render();
+    });
+  }
   document.querySelectorAll('[data-part-tab]').forEach((el) =>
     el.addEventListener('click', () => {
-      state.partStudio.part = el.dataset.partTab || 'head';
+      const tab = el.dataset.partTab || 'head';
+      state.partStudio.part = tab;
+      const idx = PART_TABS.indexOf(tab);
+      if (idx >= 0 && !state.partStudio.wizardDone) state.partStudio.wizardStep = idx;
       state.partStudio.selectedStroke = -1;
       state.partStudio.selectedPoint = -1;
       state.partStudio.selectedHandle = 'anchor';
@@ -874,12 +997,11 @@ function exportJson() {
 }
 
 function togglePlay() {
-  state.playing = !state.playing;
-  if (timer) {
-    clearTimeout(timer);
-    timer = null;
+  if (state.playing) {
+    stopPlayback();
+  } else {
+    startPlayback();
   }
-  if (state.playing) playLoop();
   render();
 }
 
@@ -890,11 +1012,18 @@ function currentPlayDelayMs() {
   return Math.max(40, Number(state.frameMs || 180));
 }
 
-function playLoop() {
-  if (!state.playing) return;
-  state.index = (state.index + 1) % state.frames.length;
-  render();
-  timer = setTimeout(playLoop, currentPlayDelayMs());
+function bindGlobalPlaybackKeysOnce() {
+  if (bindGlobalPlaybackKeysOnce.did) return;
+  bindGlobalPlaybackKeysOnce.did = true;
+  document.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' && e.key !== ' ') return;
+    if (state.partStudio.open && !state.playing) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
+    e.preventDefault();
+    togglePlay();
+  });
 }
 
 render();
+bindGlobalPlaybackKeysOnce();
