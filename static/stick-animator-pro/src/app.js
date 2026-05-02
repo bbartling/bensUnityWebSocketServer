@@ -32,15 +32,17 @@ let state = {
     wizardStep: 0,
     part: 'head',
     mode: 'draw',
-    presetStyle: 'classic',
+    presetByPart: {},
     brushColor: '#111827',
     brushSize: 5,
     selectedStroke: -1,
     selectedPoint: -1,
     selectedHandle: 'anchor',
+    simple4View: false,
+    fourViewFace: 'front',
     art: {},
   },
-  frames: [{ pose: defaultPose() }],
+  frames: [{ pose: defaultPose(), viewYaw: 0 }],
   index: 0,
   playing: false,
 };
@@ -58,22 +60,10 @@ function current() {
   return state.frames[state.index];
 }
 
-function hasSubstantialPartArt() {
-  ensurePartArt();
-  for (const part of PART_TABS) {
-    const strokes = state.partStudio.art[part];
-    if (!strokes?.length) continue;
-    for (const s of strokes) {
-      if (s?.points && s.points.length >= 2) return true;
-    }
-  }
-  return false;
-}
-
 function stageSvg(playbackOnly = false) {
   const p = current().pose;
   const layers = [];
-  const hideBaseRig = !!playbackOnly && hasSubstantialPartArt();
+  const hideBaseRig = !!playbackOnly;
   const limbs = [
     ['head', 'neck'], ['neck', 'hip'],
     ['neck', 'leftElbow'], ['leftElbow', 'leftHand'],
@@ -126,18 +116,40 @@ function ensurePartArt() {
     wizardStep: 0,
     part: 'head',
     mode: 'draw',
-    presetStyle: 'classic',
+    presetByPart: {},
     brushColor: '#111827',
     brushSize: 5,
     selectedStroke: -1,
     selectedPoint: -1,
     selectedHandle: 'anchor',
+    simple4View: false,
+    fourViewFace: 'front',
     art: {},
   };
   state.partStudio.mode = state.partStudio.mode === 'reshape' ? 'reshape' : 'draw';
-  state.partStudio.presetStyle = ['classic', 'chunky', 'robot'].includes(state.partStudio.presetStyle)
-    ? state.partStudio.presetStyle
-    : 'classic';
+  state.partStudio.presetByPart ??= {};
+  if (state.partStudio.presetStyle && typeof state.partStudio.presetByPart === 'object') {
+    const legacy = state.partStudio.presetStyle;
+    if (legacy === 'chunky') {
+      state.partStudio.presetByPart.head = 'head_spiky';
+      state.partStudio.presetByPart.torso = 'torso_round';
+      state.partStudio.presetByPart.leftArm = state.partStudio.presetByPart.rightArm = 'limb_chunky';
+      state.partStudio.presetByPart.leftLeg = state.partStudio.presetByPart.rightLeg = 'limb_chunky';
+    } else if (legacy === 'robot') {
+      state.partStudio.presetByPart.head = 'head_boxy';
+      state.partStudio.presetByPart.torso = 'torso_robot';
+      state.partStudio.presetByPart.leftArm = state.partStudio.presetByPart.rightArm = 'limb_robot';
+      state.partStudio.presetByPart.leftLeg = state.partStudio.presetByPart.rightLeg = 'limb_robot';
+      state.partStudio.presetByPart.leftHand = state.partStudio.presetByPart.rightHand = 'hand_robot';
+      state.partStudio.presetByPart.leftFoot = state.partStudio.presetByPart.rightFoot = 'foot_robot';
+    }
+    delete state.partStudio.presetStyle;
+  }
+  if (state.partStudio.presetByPart && typeof state.partStudio.presetByPart === 'object') {
+    for (const key of Object.keys(state.partStudio.presetByPart)) {
+      if (typeof state.partStudio.presetByPart[key] !== 'string') delete state.partStudio.presetByPart[key];
+    }
+  }
   state.partStudio.selectedStroke = Number.isFinite(state.partStudio.selectedStroke) ? state.partStudio.selectedStroke : -1;
   state.partStudio.selectedPoint = Number.isFinite(state.partStudio.selectedPoint) ? state.partStudio.selectedPoint : -1;
   state.partStudio.selectedHandle = ['anchor', 'out', 'in'].includes(state.partStudio.selectedHandle)
@@ -152,41 +164,348 @@ function ensurePartArt() {
     state.partStudio.wizardDone = true;
   }
   state.partStudio.art ??= {};
+  state.partStudio.simple4View = !!state.partStudio.simple4View;
+  state.partStudio.fourViewFace = ['front', 'right', 'back', 'left'].includes(state.partStudio.fourViewFace)
+    ? state.partStudio.fourViewFace
+    : 'front';
+  if (state.partStudio.simple4View) state.partStudio.mode = 'draw';
   for (const p of PART_TABS) {
-    if (!Array.isArray(state.partStudio.art[p])) state.partStudio.art[p] = [];
+    const slot = state.partStudio.art[p];
+    if (slot == null) {
+      state.partStudio.art[p] = [];
+      continue;
+    }
+    if (isFourViewArt(slot)) continue;
+    if (Array.isArray(slot)) continue;
+    state.partStudio.art[p] = [];
+  }
+  for (const fr of state.frames) {
+    let y = Number(fr.viewYaw);
+    if (!Number.isFinite(y)) y = 0;
+    fr.viewYaw = ((y % 360) + 360) % 360;
   }
 }
 
-function presetPartStrokes(part, style) {
-  const mk = (color, widthNorm, points) => ({
+const FOUR_FACES = ['front', 'right', 'back', 'left'];
+
+function isFourViewArt(v) {
+  return !!(v && typeof v === 'object' && v.type === 'four' && v.faces && typeof v.faces === 'object');
+}
+
+function toFourViewArt(slot) {
+  const strokes = Array.isArray(slot) ? [...slot] : isFourViewArt(slot) ? [...(slot.faces?.front || [])] : [];
+  return {
+    type: 'four',
+    faces: { front: strokes, right: [], back: [], left: [] },
+  };
+}
+
+function collapseArtToFlat(slot) {
+  if (isFourViewArt(slot)) return [...(slot.faces?.front || [])];
+  return Array.isArray(slot) ? [...slot] : [];
+}
+
+function yawToFace(deg) {
+  const a = ((Number(deg) || 0) % 360 + 360) % 360;
+  if (a >= 315 || a < 45) return 'front';
+  if (a < 135) return 'right';
+  if (a < 225) return 'back';
+  return 'left';
+}
+
+function frameViewYaw() {
+  return Number(current().viewYaw) || 0;
+}
+
+function renderFaceFromYaw() {
+  return yawToFace(frameViewYaw());
+}
+
+/** Strokes drawn on stage for this part (respects 4-side + turntable). */
+function getStrokesListForPartRender(part) {
+  const slot = state.partStudio.art[part];
+  if (state.partStudio.simple4View && isFourViewArt(slot)) {
+    const face = renderFaceFromYaw();
+    return slot.faces[face] || [];
+  }
+  if (isFourViewArt(slot)) return slot.faces?.front || [];
+  return Array.isArray(slot) ? slot : [];
+}
+
+/** Mutable stroke array for the active Part Studio tab (selected side in 4-view). */
+function getEditableStrokesForPart(part) {
+  let slot = state.partStudio.art[part];
+  if (state.partStudio.simple4View) {
+    if (!isFourViewArt(slot)) {
+      state.partStudio.art[part] = toFourViewArt(slot);
+      slot = state.partStudio.art[part];
+    }
+    const face = state.partStudio.fourViewFace || 'front';
+    if (!slot.faces[face]) slot.faces[face] = [];
+    return slot.faces[face];
+  }
+  if (isFourViewArt(slot)) {
+    if (!slot.faces.front) slot.faces.front = [];
+    return slot.faces.front;
+  }
+  if (!Array.isArray(slot)) state.partStudio.art[part] = [];
+  return state.partStudio.art[part];
+}
+
+const PRESET_DEFAULT_ID = {
+  head: 'head_round',
+  torso: 'torso_vest',
+  leftArm: 'limb_smooth',
+  rightArm: 'limb_smooth',
+  leftHand: 'hand_round',
+  rightHand: 'hand_round',
+  leftLeg: 'limb_smooth',
+  rightLeg: 'limb_smooth',
+  leftFoot: 'foot_sneaker',
+  rightFoot: 'foot_sneaker',
+};
+
+const PRESET_CHOICES = {
+  head: [
+    ['head_round', 'Round + smile'],
+    ['head_oval', 'Oval portrait'],
+    ['head_boxy', 'Boxy / block'],
+    ['head_alien', 'Big eyes (alien)'],
+    ['head_hood', 'Hood + face'],
+    ['head_spiky', 'Spiky hair'],
+  ],
+  torso: [
+    ['torso_vest', 'Vest / jacket'],
+    ['torso_tank', 'Tank top'],
+    ['torso_robot', 'Robot chest'],
+    ['torso_coat', 'Open coat'],
+    ['torso_round', 'Round belly'],
+  ],
+  limb: [
+    ['limb_smooth', 'Smooth taper'],
+    ['limb_chunky', 'Thick limb'],
+    ['limb_robot', 'Segmented bot'],
+    ['limb_spring', 'Coil / spring'],
+  ],
+  hand: [
+    ['hand_round', 'Round mitt'],
+    ['hand_point', 'Pointing'],
+    ['hand_robot', 'Three-finger bot'],
+    ['hand_mitten', 'Mitten'],
+  ],
+  foot: [
+    ['foot_sneaker', 'Sneaker'],
+    ['foot_boot', 'Boot'],
+    ['foot_simple', 'Simple slipper'],
+    ['foot_robot', 'Block foot'],
+  ],
+};
+
+function partPresetCategory(part) {
+  if (part === 'head') return 'head';
+  if (part === 'torso') return 'torso';
+  if (/Arm$/.test(part) || /Leg$/.test(part)) return 'limb';
+  if (/Hand$/.test(part)) return 'hand';
+  if (/Foot$/.test(part)) return 'foot';
+  return 'limb';
+}
+
+function presetChoiceListForPart(part) {
+  return PRESET_CHOICES[partPresetCategory(part)] || PRESET_CHOICES.limb;
+}
+
+function allowedPresetIdsForPart(part) {
+  return new Set(presetChoiceListForPart(part).map(([id]) => id));
+}
+
+function currentPresetIdForPart(part) {
+  ensurePartArt();
+  const allowed = allowedPresetIdsForPart(part);
+  const saved = state.partStudio.presetByPart?.[part];
+  if (saved && allowed.has(saved)) return saved;
+  const def = PRESET_DEFAULT_ID[part];
+  if (def && allowed.has(def)) return def;
+  return presetChoiceListForPart(part)[0][0];
+}
+
+function mkPresetStroke(color, widthNorm, points) {
+  return {
     color,
     widthNorm,
     points: points.map(([u, v]) => ({ u, v, outU: 0, outV: 0, inU: 0, inV: 0 })),
-  });
-  const dark = style === 'robot' ? '#334155' : '#111827';
-  const accent = style === 'chunky' ? '#0ea5e9' : style === 'robot' ? '#22c55e' : '#111827';
-  if (part === 'head') {
-    return [
-      mk(dark, 0.06, [[-0.35, -0.2], [-0.1, -0.25], [0.1, -0.25], [0.35, -0.2]]),
-      mk(accent, 0.06, [[-0.35, 0.2], [-0.15, 0.34], [0, 0.38], [0.15, 0.34], [0.35, 0.2]]),
-    ];
-  }
-  if (part.includes('Hand') || part.includes('Foot')) {
-    return [
-      mk(dark, 0.08, [[-0.25, -0.1], [0.0, -0.24], [0.25, -0.1], [0.3, 0.15], [0.0, 0.26], [-0.3, 0.15], [-0.25, -0.1]]),
-    ];
-  }
-  if (part === 'torso') {
-    return [
-      mk(dark, 0.08, [[-0.6, -0.3], [-0.45, -0.45], [0.45, -0.45], [0.6, -0.3], [0.55, 0.4], [-0.55, 0.4], [-0.6, -0.3]]),
-      mk(accent, 0.05, [[-0.2, -0.15], [0.2, -0.15], [0.2, 0.15], [-0.2, 0.15], [-0.2, -0.15]]),
-    ];
-  }
-  return [
-    mk(dark, style === 'chunky' ? 0.12 : 0.08, [[-0.9, -0.08], [-0.6, -0.2], [0.6, 0.2], [0.9, 0.08]]),
-    mk(accent, 0.04, [[-0.35, -0.03], [0.35, 0.03]]),
-  ];
+  };
 }
+
+/** Pre-drawn vector strokes for the active part tab (normalized part space). */
+function presetPartStrokes(part, presetId) {
+  const mk = mkPresetStroke;
+  const id = allowedPresetIdsForPart(part).has(presetId) ? presetId : currentPresetIdForPart(part);
+  const B = PRESET_STROKE_BUILDERS[id];
+  if (typeof B === 'function') return B(mk);
+  return PRESET_STROKE_BUILDERS.limb_smooth(mk);
+}
+
+const PRESET_STROKE_BUILDERS = {
+  head_round: (mk) => [
+    mk('#0f172a', 0.075, [
+      [0, -0.88], [-0.58, -0.52], [-0.82, 0.05], [-0.52, 0.72], [0, 0.92], [0.52, 0.72], [0.82, 0.05], [0.58, -0.52], [0, -0.88],
+    ]),
+    mk('#1e293b', 0.055, [
+      [-0.38, -0.12], [-0.32, -0.02], [-0.38, 0.08], [-0.44, -0.02], [-0.38, -0.12],
+    ]),
+    mk('#1e293b', 0.055, [
+      [0.38, -0.12], [0.32, -0.02], [0.38, 0.08], [0.44, -0.02], [0.38, -0.12],
+    ]),
+    mk('#1e293b', 0.055, [[-0.3, 0.48], [0, 0.58], [0.3, 0.48]]),
+    mk('#64748b', 0.04, [[-0.55, -0.65], [-0.2, -0.78], [0.2, -0.78], [0.55, -0.65]]),
+  ],
+  head_oval: (mk) => [
+    mk('#0f172a', 0.07, [
+      [0, -0.92], [-0.42, -0.75], [-0.65, -0.2], [-0.65, 0.35], [-0.4, 0.78], [0, 0.9], [0.4, 0.78], [0.65, 0.35], [0.65, -0.2], [0.42, -0.75], [0, -0.92],
+    ]),
+    mk('#334155', 0.045, [[-0.35, -0.05], [-0.25, 0.08]]),
+    mk('#334155', 0.045, [[0.35, -0.05], [0.25, 0.08]]),
+    mk('#334155', 0.045, [[-0.22, 0.42], [0.22, 0.42]]),
+  ],
+  head_boxy: (mk) => [
+    mk('#0f172a', 0.08, [
+      [-0.55, -0.75], [0.55, -0.75], [0.65, -0.35], [0.65, 0.45], [0.45, 0.75], [-0.45, 0.75], [-0.65, 0.45], [-0.65, -0.35], [-0.55, -0.75],
+    ]),
+    mk('#475569', 0.05, [[-0.35, -0.2], [0.35, -0.2]]),
+    mk('#475569', 0.05, [[-0.28, 0.1], [-0.28, 0.35]]),
+    mk('#475569', 0.05, [[0.28, 0.1], [0.28, 0.35]]),
+    mk('#475569', 0.055, [[-0.25, 0.52], [0.25, 0.52]]),
+  ],
+  head_alien: (mk) => [
+    mk('#0f172a', 0.06, [
+      [0, -0.55], [-0.7, -0.15], [-0.85, 0.4], [-0.35, 0.82], [0.35, 0.82], [0.85, 0.4], [0.7, -0.15], [0, -0.55],
+    ]),
+    mk('#22c55e', 0.08, [
+      [-0.45, -0.05], [-0.55, 0.15], [-0.35, 0.35], [-0.12, 0.22], [-0.2, 0], [-0.45, -0.05],
+    ]),
+    mk('#22c55e', 0.08, [
+      [0.45, -0.05], [0.55, 0.15], [0.35, 0.35], [0.12, 0.22], [0.2, 0], [0.45, -0.05],
+    ]),
+    mk('#0f172a', 0.04, [[-0.08, 0.55], [0.08, 0.55]]),
+  ],
+  head_hood: (mk) => [
+    mk('#1e293b', 0.07, [
+      [0, -0.95], [-0.75, -0.55], [-0.88, 0.1], [-0.55, 0.55], [0, 0.65], [0.55, 0.55], [0.88, 0.1], [0.75, -0.55], [0, -0.95],
+    ]),
+    mk('#64748b', 0.06, [
+      [0, -0.35], [-0.42, -0.1], [-0.48, 0.35], [-0.25, 0.62], [0.25, 0.62], [0.48, 0.35], [0.42, -0.1], [0, -0.35],
+    ]),
+    mk('#0f172a', 0.045, [[-0.2, 0.15], [0.2, 0.15]]),
+    mk('#0f172a', 0.045, [[-0.15, 0.38], [0.15, 0.38]]),
+  ],
+  head_spiky: (mk) => [
+    mk('#0f172a', 0.065, [
+      [-0.55, 0.15], [-0.45, -0.35], [-0.25, -0.75], [0, -0.95], [0.25, -0.75], [0.45, -0.35], [0.55, 0.15], [0.45, 0.55], [0, 0.78], [-0.45, 0.55], [-0.55, 0.15],
+    ]),
+    mk('#b45309', 0.06, [[-0.5, -0.2], [-0.35, -0.65], [-0.1, -0.85], [0.1, -0.82], [0.35, -0.55], [0.5, -0.15]]),
+    mk('#1e293b', 0.045, [[-0.28, 0.05], [-0.22, 0.22]]),
+    mk('#1e293b', 0.045, [[0.28, 0.05], [0.22, 0.22]]),
+    mk('#1e293b', 0.05, [[-0.22, 0.42], [0, 0.48], [0.22, 0.42]]),
+  ],
+  torso_vest: (mk) => [
+    mk('#0f172a', 0.085, [
+      [-0.55, -0.42], [-0.35, -0.48], [0.35, -0.48], [0.55, -0.42], [0.58, 0.38], [0.35, 0.48], [-0.35, 0.48], [-0.58, 0.38], [-0.55, -0.42],
+    ]),
+    mk('#334155', 0.055, [[0, -0.48], [0, 0.12], [-0.22, 0.35], [0.22, 0.35], [0, 0.12]]),
+    mk('#64748b', 0.045, [[-0.35, -0.25], [0.35, -0.25]]),
+  ],
+  torso_tank: (mk) => [
+    mk('#0f172a', 0.08, [
+      [-0.42, -0.45], [-0.22, -0.52], [0.22, -0.52], [0.42, -0.45], [0.48, 0.4], [0.25, 0.5], [-0.25, 0.5], [-0.48, 0.4], [-0.42, -0.45],
+    ]),
+    mk('#475569', 0.05, [[-0.28, -0.35], [0.28, -0.35]]),
+    mk('#475569', 0.04, [[-0.15, 0], [0.15, 0]]),
+  ],
+  torso_robot: (mk) => [
+    mk('#334155', 0.09, [
+      [-0.52, -0.45], [0.52, -0.45], [0.55, 0.42], [-0.55, 0.42], [-0.52, -0.45],
+    ]),
+    mk('#22c55e', 0.05, [[-0.38, -0.25], [0.38, -0.25]]),
+    mk('#22c55e', 0.05, [[-0.38, 0.15], [0.38, 0.15]]),
+    mk('#64748b', 0.045, [[-0.2, -0.05], [0.2, -0.05]]),
+    mk('#64748b', 0.045, [[-0.2, 0.28], [0.2, 0.28]]),
+  ],
+  torso_coat: (mk) => [
+    mk('#0f172a', 0.075, [
+      [-0.5, -0.4], [-0.25, -0.52], [0.25, -0.52], [0.5, -0.4], [0.55, 0.45], [0.2, 0.55], [-0.2, 0.55], [-0.55, 0.45], [-0.5, -0.4],
+    ]),
+    mk('#1e293b', 0.055, [[0, -0.52], [0, 0.35]]),
+    mk('#475569', 0.05, [[-0.35, -0.2], [-0.05, 0.05]]),
+    mk('#475569', 0.05, [[0.35, -0.2], [0.05, 0.05]]),
+  ],
+  torso_round: (mk) => [
+    mk('#0f172a', 0.08, [
+      [-0.45, -0.38], [-0.55, 0.1], [-0.35, 0.48], [0.35, 0.48], [0.55, 0.1], [0.45, -0.38], [0, -0.52], [-0.45, -0.38],
+    ]),
+    mk('#64748b', 0.045, [[-0.2, -0.15], [0.2, -0.15]]),
+    mk('#64748b', 0.04, [[0, -0.05], [0, 0.25]]),
+  ],
+  limb_smooth: (mk) => [
+    mk('#0f172a', 0.085, [[-0.88, -0.06], [-0.55, -0.18], [0.55, 0.18], [0.88, 0.06]]),
+    mk('#475569', 0.04, [[-0.35, -0.04], [0.35, 0.04]]),
+  ],
+  limb_chunky: (mk) => [
+    mk('#0f172a', 0.12, [[-0.85, -0.12], [-0.5, -0.22], [0.5, 0.22], [0.85, 0.12]]),
+    mk('#334155', 0.06, [[-0.4, -0.08], [0.4, 0.08]]),
+  ],
+  limb_robot: (mk) => [
+    mk('#334155', 0.09, [[-0.82, 0], [-0.5, -0.12], [-0.18, 0], [0.18, 0], [0.5, 0.12], [0.82, 0]]),
+    mk('#22c55e', 0.045, [[-0.35, 0], [0.35, 0]]),
+    mk('#64748b', 0.04, [[-0.15, -0.06], [-0.15, 0.06]]),
+    mk('#64748b', 0.04, [[0.15, -0.06], [0.15, 0.06]]),
+  ],
+  limb_spring: (mk) => [
+    mk('#0f172a', 0.06, [
+      [-0.75, -0.15], [-0.55, 0.05], [-0.75, 0.25], [-0.55, 0.45], [-0.75, 0.65], [0.75, 0.15], [0.55, -0.05], [0.75, -0.25], [0.55, -0.45], [0.75, -0.65],
+    ]),
+  ],
+  hand_round: (mk) => [
+    mk('#0f172a', 0.08, [
+      [-0.22, -0.12], [0, -0.28], [0.28, -0.08], [0.32, 0.18], [0.12, 0.32], [-0.12, 0.32], [-0.32, 0.18], [-0.28, -0.08], [-0.22, -0.12],
+    ]),
+  ],
+  hand_point: (mk) => [
+    mk('#0f172a', 0.065, [[-0.15, 0.1], [0.1, -0.35], [0.35, -0.55], [0.42, -0.35], [0.2, -0.1], [0.05, 0.15], [-0.15, 0.1]]),
+    mk('#475569', 0.05, [[-0.25, 0.05], [-0.1, 0.22], [0.05, 0.18]]),
+  ],
+  hand_robot: (mk) => [
+    mk('#334155', 0.08, [[-0.25, -0.1], [0.25, -0.1], [0.3, 0.2], [0, 0.35], [-0.3, 0.2], [-0.25, -0.1]]),
+    mk('#22c55e', 0.045, [[-0.12, 0], [0.12, 0]]),
+    mk('#22c55e', 0.045, [[0, -0.05], [0, 0.22]]),
+  ],
+  hand_mitten: (mk) => [
+    mk('#0f172a', 0.075, [
+      [-0.28, 0.05], [-0.2, -0.22], [0, -0.32], [0.2, -0.22], [0.28, 0.05], [0.15, 0.28], [-0.15, 0.28], [-0.28, 0.05],
+    ]),
+  ],
+  foot_sneaker: (mk) => [
+    mk('#0f172a', 0.08, [
+      [-0.35, -0.08], [0.38, -0.05], [0.42, 0.18], [0.25, 0.32], [-0.28, 0.32], [-0.42, 0.12], [-0.35, -0.08],
+    ]),
+    mk('#ffffff', 0.05, [[-0.15, 0.02], [0.2, 0.05], [0.22, 0.18]]),
+    mk('#1e293b', 0.04, [[-0.25, 0.22], [0.3, 0.25]]),
+  ],
+  foot_boot: (mk) => [
+    mk('#1e293b', 0.09, [
+      [-0.25, -0.35], [0.25, -0.35], [0.35, 0.05], [0.32, 0.38], [-0.32, 0.38], [-0.35, 0.05], [-0.25, -0.35],
+    ]),
+    mk('#451a03', 0.055, [[-0.18, -0.2], [0.18, -0.2], [0.22, 0.12], [-0.22, 0.12], [-0.18, -0.2]]),
+  ],
+  foot_simple: (mk) => [
+    mk('#0f172a', 0.07, [
+      [-0.32, -0.05], [0.32, -0.05], [0.38, 0.2], [0.2, 0.35], [-0.2, 0.35], [-0.38, 0.2], [-0.32, -0.05],
+    ]),
+  ],
+  foot_robot: (mk) => [
+    mk('#475569', 0.09, [[-0.35, -0.12], [0.35, -0.12], [0.38, 0.28], [-0.38, 0.28], [-0.35, -0.12]]),
+    mk('#22c55e', 0.045, [[-0.2, 0.05], [0.2, 0.05]]),
+  ],
+};
 
 function normDistance2(a, b) {
   const dx = (a.u || 0) - (b.u || 0);
@@ -329,7 +648,7 @@ function partArtSvg(pose, stroke, opacity, playbackOnly) {
   ensurePartArt();
   const out = [];
   for (const part of PART_TABS) {
-    const strokes = state.partStudio.art[part];
+    const strokes = getStrokesListForPartRender(part);
     if (!strokes?.length) continue;
     for (const s of strokes) {
       if (!s?.points || s.points.length < 2) continue;
@@ -422,12 +741,18 @@ function render() {
             <label class="hint">Zoom <input id="zoomRange" type="range" min="0.5" max="3" step="0.1" value="${state.zoom}" /></label>
             <button id="zoomReset">Reset Zoom</button>
           </div>
+          <div class="controls view-yaw-row ${state.partStudio.simple4View ? '' : 'is-hidden'}">
+            <label class="hint">Turntable (4-side)
+              <input id="viewYaw" type="range" min="0" max="360" step="1" value="${Math.round(frameViewYaw())}" />
+            </label>
+            <span class="hint" id="viewYawReadout">${Math.round(frameViewYaw())}° → ${renderFaceFromYaw()} on stage</span>
+          </div>
           <div class="hint">Frame ${state.index + 1} / ${state.frames.length} · ${
             playbackOnly
-              ? hasSubstantialPartArt()
-                ? 'Playback — custom parts only (rig hidden)'
-                : 'Playback view (clean)'
-              : 'Drag joints to pose'
+              ? 'Playback — rig hidden (Part Studio art only)'
+              : state.partStudio.simple4View
+                ? 'Pose the rig · each part has Front/Back/Left/Right art · Turntable picks which side shows'
+                : 'Drag joints to pose'
           } · Space = play/pause</div>
           <div class="stage-viewport">
             <svg id="stage" style="width:${Math.round(state.zoom * 100)}%;max-width:none;" draggable="false" viewBox="0 0 ${W} ${H}" aria-label="Animation stage">${stageSvg(playbackOnly)}</svg>
@@ -456,28 +781,51 @@ function render() {
           <div class="part-tabs">
             ${PART_TABS.map((p) => `<button class="small ${state.partStudio.part === p ? 'good' : ''}" data-part-tab="${p}">${p}</button>`).join('')}
           </div>
-          <div class="face-studio-tools">
+          <label class="simple-4-toggle hint">
+            <input type="checkbox" id="simple4View" ${state.partStudio.simple4View ? 'checked' : ''} />
+            Simple 4-side mode (draw front / back / left / right — still 2D, turntable swaps sides)
+          </label>
+          <div class="simple-four-panel ${state.partStudio.simple4View ? '' : 'is-hidden'}">
+            <div class="hint">Painting side (this part only)</div>
+            <div class="four-face-bar">
+              ${FOUR_FACES.map(
+                (f) =>
+                  `<button type="button" class="small ${state.partStudio.fourViewFace === f ? 'good' : ''}" data-four-face="${f}">${f}</button>`,
+              ).join('')}
+            </div>
+            <label>Brush color <input id="simpleBrushColor" type="color" value="${state.partStudio.brushColor}" /></label>
+            <label>Brush size <input id="simpleBrushSize" type="range" min="2" max="18" step="1" value="${state.partStudio.brushSize}" /></label>
+            <button type="button" id="simpleClearFace" class="small danger">Clear this side</button>
+          </div>
+          <div class="face-studio-tools ${state.partStudio.simple4View ? 'is-hidden' : ''}">
             <label>Mode
               <select id="partMode">
                 <option value="draw" ${state.partStudio.mode === 'draw' ? 'selected' : ''}>Draw</option>
                 <option value="reshape" ${state.partStudio.mode === 'reshape' ? 'selected' : ''}>Reshape</option>
               </select>
             </label>
-            <label>Preset
-              <select id="partPresetStyle">
-                <option value="classic" ${state.partStudio.presetStyle === 'classic' ? 'selected' : ''}>Classic</option>
-                <option value="chunky" ${state.partStudio.presetStyle === 'chunky' ? 'selected' : ''}>Chunky</option>
-                <option value="robot" ${state.partStudio.presetStyle === 'robot' ? 'selected' : ''}>Robot</option>
+            <label class="part-preset-label">Pre-drawn
+              <select id="partPresetPick">
+                ${presetChoiceListForPart(state.partStudio.part)
+                  .map(
+                    ([id, label]) =>
+                      `<option value="${id}" ${currentPresetIdForPart(state.partStudio.part) === id ? 'selected' : ''}>${label}</option>`,
+                  )
+                  .join('')}
               </select>
             </label>
-            <button id="partApplyPreset" class="small">Apply preset</button>
+            <button type="button" id="partApplyPreset" class="small">Apply to this part</button>
             <label>Brush color <input id="partBrushColor" type="color" value="${state.partStudio.brushColor}" /></label>
             <label>Brush size <input id="partBrushSize" type="range" min="2" max="18" step="1" value="${state.partStudio.brushSize}" /></label>
             <button id="partSmoothCurves" class="small" title="Reset to auto-smooth (Catmull) cubics">Smooth curves</button>
             <button id="partClear" class="small danger">Clear part</button>
           </div>
           <canvas id="partStudioCanvas" width="360" height="360" aria-label="Part Studio canvas"></canvas>
-          <p class="hint">Draw: freehand. Reshape: drag anchors; drag teal (out) / violet (in) handles for Bezier tangents; click segment to add a node. Smooth curves clears custom handles.</p>
+          <p class="hint">${
+            state.partStudio.simple4View
+              ? '4-side: pick a body tab, pick Front/Right/Back/Left, draw. Use Turntable on the stage to preview. Full vector tools return when you turn this off (other sides are kept but only Front is used in normal mode).'
+              : 'Pre-drawn: pick a shape for this body part, then Apply. Draw / reshape as needed. Play mode hides the default stick; only Part Studio art shows.'
+          }</p>
         </div>
       </div>
     </div>
@@ -497,12 +845,12 @@ function render() {
   document.getElementById('prev').addEventListener('click', () => { state.index = (state.index - 1 + state.frames.length) % state.frames.length; render(); });
   document.getElementById('next').addEventListener('click', () => { state.index = (state.index + 1) % state.frames.length; render(); });
   document.getElementById('add').addEventListener('click', () => {
-    state.frames.splice(state.index + 1, 0, { pose: clone(current().pose) });
+    state.frames.splice(state.index + 1, 0, clone(current()));
     state.index += 1;
     render();
   });
   document.getElementById('dup').addEventListener('click', () => {
-    state.frames.splice(state.index + 1, 0, { pose: clone(current().pose) });
+    state.frames.splice(state.index + 1, 0, clone(current()));
     state.index += 1;
     render();
   });
@@ -555,28 +903,37 @@ function render() {
       render();
     }),
   );
-  document.getElementById('partMode').addEventListener('change', (e) => {
+  document.getElementById('partMode')?.addEventListener('change', (e) => {
     state.partStudio.mode = e.target.value === 'reshape' ? 'reshape' : 'draw';
     state.partStudio.selectedStroke = -1;
     state.partStudio.selectedPoint = -1;
     state.partStudio.selectedHandle = 'anchor';
     drawPartStudioCanvas();
   });
-  document.getElementById('partPresetStyle').addEventListener('change', (e) => {
-    state.partStudio.presetStyle = ['classic', 'chunky', 'robot'].includes(e.target.value) ? e.target.value : 'classic';
-  });
-  document.getElementById('partApplyPreset').addEventListener('click', () => {
+  document.getElementById('partPresetPick')?.addEventListener('change', (e) => {
     const part = state.partStudio.part;
-    state.partStudio.art[part] = presetPartStrokes(part, state.partStudio.presetStyle);
+    state.partStudio.presetByPart ??= {};
+    const v = e.target.value;
+    if (allowedPresetIdsForPart(part).has(v)) state.partStudio.presetByPart[part] = v;
+  });
+  document.getElementById('partApplyPreset')?.addEventListener('click', () => {
+    const part = state.partStudio.part;
+    const pid = currentPresetIdForPart(part);
+    state.partStudio.presetByPart ??= {};
+    state.partStudio.presetByPart[part] = pid;
+    const arr = getEditableStrokesForPart(part);
+    const newStrokes = presetPartStrokes(part, pid);
+    arr.length = 0;
+    for (const s of newStrokes) arr.push(s);
     state.partStudio.selectedStroke = -1;
     state.partStudio.selectedPoint = -1;
     state.partStudio.selectedHandle = 'anchor';
     drawPartStudioCanvas();
     document.getElementById('stage').innerHTML = stageSvg(!!state.playing);
   });
-  document.getElementById('partSmoothCurves').addEventListener('click', () => {
+  document.getElementById('partSmoothCurves')?.addEventListener('click', () => {
     const part = state.partStudio.part;
-    const strokes = state.partStudio.art[part] || [];
+    const strokes = getEditableStrokesForPart(part);
     for (const s of strokes) {
       for (const pt of s.points || []) {
         pt.outU = 0;
@@ -588,11 +945,52 @@ function render() {
     drawPartStudioCanvas();
     document.getElementById('stage').innerHTML = stageSvg(!!state.playing);
   });
-  document.getElementById('partBrushColor').addEventListener('input', (e) => { state.partStudio.brushColor = e.target.value || '#111827'; });
-  document.getElementById('partBrushSize').addEventListener('input', (e) => { state.partStudio.brushSize = Math.max(2, Math.min(18, Number(e.target.value || 5))); });
-  document.getElementById('partClear').addEventListener('click', () => {
+  document.getElementById('partBrushColor')?.addEventListener('input', (e) => { state.partStudio.brushColor = e.target.value || '#111827'; });
+  document.getElementById('partBrushSize')?.addEventListener('input', (e) => { state.partStudio.brushSize = Math.max(2, Math.min(18, Number(e.target.value || 5))); });
+  document.getElementById('simpleBrushColor')?.addEventListener('input', (e) => { state.partStudio.brushColor = e.target.value || '#111827'; });
+  document.getElementById('simpleBrushSize')?.addEventListener('input', (e) => { state.partStudio.brushSize = Math.max(2, Math.min(18, Number(e.target.value || 5))); });
+  document.getElementById('simpleClearFace')?.addEventListener('click', () => {
+    getEditableStrokesForPart(state.partStudio.part).length = 0;
+    state.partStudio.selectedStroke = -1;
+    state.partStudio.selectedPoint = -1;
+    state.partStudio.selectedHandle = 'anchor';
+    drawPartStudioCanvas();
+    document.getElementById('stage').innerHTML = stageSvg(!!state.playing);
+  });
+  document.getElementById('simple4View')?.addEventListener('change', (e) => {
+    if (e.target.checked) {
+      for (const p of PART_TABS) {
+        if (!isFourViewArt(state.partStudio.art[p])) state.partStudio.art[p] = toFourViewArt(state.partStudio.art[p]);
+      }
+      state.partStudio.simple4View = true;
+      state.partStudio.mode = 'draw';
+    } else {
+      for (const p of PART_TABS) {
+        state.partStudio.art[p] = collapseArtToFlat(state.partStudio.art[p]);
+      }
+      state.partStudio.simple4View = false;
+    }
+    partDrawing = null;
+    render();
+  });
+  document.querySelectorAll('[data-four-face]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.partStudio.fourViewFace = btn.getAttribute('data-four-face') || 'front';
+      partDrawing = null;
+      render();
+    });
+  });
+  document.getElementById('viewYaw')?.addEventListener('input', (e) => {
+    current().viewYaw = Math.max(0, Math.min(360, Number(e.target.value) || 0));
+    const r = document.getElementById('viewYawReadout');
+    if (r) r.textContent = `${Math.round(current().viewYaw)}° → ${renderFaceFromYaw()} on stage`;
+    const st = document.getElementById('stage');
+    if (st) st.innerHTML = stageSvg(!!state.playing);
+  });
+  document.getElementById('partClear')?.addEventListener('click', () => {
     const part = state.partStudio.part;
-    state.partStudio.art[part] = [];
+    const arr = getEditableStrokesForPart(part);
+    arr.length = 0;
     state.partStudio.selectedStroke = -1;
     state.partStudio.selectedPoint = -1;
     state.partStudio.selectedHandle = 'anchor';
@@ -617,8 +1015,8 @@ function bindPartStudio() {
     const p = partCanvasToNorm(canvas, e.clientX, e.clientY);
     if (!p) return;
     const part = state.partStudio.part;
-    const strokes = state.partStudio.art[part] || [];
-    if (state.partStudio.mode === 'reshape') {
+    const strokes = getEditableStrokesForPart(part);
+    if (state.partStudio.mode === 'reshape' && !state.partStudio.simple4View) {
       const handleHitR2 = 0.055 * 0.055;
       const pointHitR2 = 0.016 * 0.016;
       const prefer = state.partStudio.selectedStroke;
@@ -743,8 +1141,8 @@ function bindPartStudio() {
       widthNorm: Math.max(0.02, Math.min(0.16, Number(state.partStudio.brushSize || 5) / 80)),
       points: [newNormPoint(p.u, p.v)],
     };
-    state.partStudio.art[part].push(stroke);
-    state.partStudio.selectedStroke = state.partStudio.art[part].length - 1;
+    strokes.push(stroke);
+    state.partStudio.selectedStroke = strokes.length - 1;
     state.partStudio.selectedPoint = -1;
     partDrawing = stroke;
     canvas.setPointerCapture?.(e.pointerId);
@@ -755,7 +1153,7 @@ function bindPartStudio() {
     const p = partCanvasToNorm(canvas, e.clientX, e.clientY);
     if (!p) return;
     if (partDrawing.mode === 'reshape') {
-      const strokes = state.partStudio.art[state.partStudio.part] || [];
+      const strokes = getEditableStrokesForPart(state.partStudio.part);
       const stroke = strokes[partDrawing.stroke];
       if (!stroke?.points) return;
       const clamp = (q) => ({
@@ -848,7 +1246,12 @@ function drawPartStudioCanvas() {
     ctx.lineTo(cx, cy + rr * 0.8);
     ctx.stroke();
   }
-  const strokes = state.partStudio.art[part] || [];
+  const strokes = getEditableStrokesForPart(part);
+  if (state.partStudio.simple4View) {
+    ctx.fillStyle = '#334155';
+    ctx.font = '600 13px system-ui,sans-serif';
+    ctx.fillText(`Painting: ${state.partStudio.fourViewFace}`, 12, 22);
+  }
   for (let si = 0; si < strokes.length; si++) {
     const s = strokes[si];
     if (!s.points || s.points.length < 2) continue;

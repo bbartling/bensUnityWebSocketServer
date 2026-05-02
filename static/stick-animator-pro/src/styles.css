@@ -103,6 +103,37 @@ main {
 .face-studio-modal.hidden {
   display: none;
 }
+.is-hidden {
+  display: none !important;
+}
+.simple-4-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.15rem 0 0.35rem;
+}
+.simple-four-panel {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.5rem 0.55rem;
+  margin-bottom: 0.35rem;
+  border-radius: 0.55rem;
+  background: rgba(30, 41, 59, 0.55);
+  border: 1px solid rgba(125, 211, 252, 0.2);
+}
+.four-face-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.view-yaw-row {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.view-yaw-row input[type='range'] {
+  min-width: 140px;
+  vertical-align: middle;
+}
 .face-studio-card {
   width: min(94vw, 620px);
   background: #0f172a;
@@ -151,6 +182,13 @@ main {
   grid-template-columns: 1fr 1fr auto;
   gap: 0.55rem;
   align-items: end;
+}
+.part-preset-label {
+  grid-column: 1 / -1;
+}
+.part-preset-label select {
+  width: 100%;
+  max-width: 100%;
 }
 #partStudioCanvas {
   width: min(100%, 440px);
