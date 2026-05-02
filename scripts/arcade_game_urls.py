@@ -74,7 +74,12 @@ SERVED_HTML_CHECK_PAGES: list[str] = (
 BROWSER_CONSOLE_CHECK_PAGES: list[str] = list(SERVED_HTML_CHECK_PAGES)
 
 # Console `warning` messages containing any of these substrings (case-insensitive) do not fail the run.
-ALLOWED_CONSOLE_WARNING_SUBSTRINGS: tuple[str, ...] = ()
+ALLOWED_CONSOLE_WARNING_SUBSTRINGS: tuple[str, ...] = (
+    # Chromium / ANGLE WebGL noise when Three.js (Part Studio preview) uses the GPU in headless CI.
+    "gpu stall due to readpixels",
+    "gl_close_path_nv",
+    "gl driver message",
+)
 
 # Console `error` messages containing any of these substrings (case-insensitive) do not fail the run.
 # Keep this limited to known external/transient infrastructure issues.

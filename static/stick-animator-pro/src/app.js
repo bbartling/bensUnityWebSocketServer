@@ -1,8 +1,25 @@
+import { disposePartStudio3d, mountPartStudio3d, markPartStudio3dDirty } from './partStudio3d.js';
+
 const app = document.getElementById('app');
 
 const W = 1280;
 const H = 720;
 const PART_TABS = ['head', 'torso', 'leftArm', 'rightArm', 'leftHand', 'rightHand', 'leftLeg', 'rightLeg', 'leftFoot', 'rightFoot'];
+/** Squared max distance (stage SVG units) from click to joint to count as a rig hit. */
+const STAGE_JOINT_PICK_R2 = 56 * 56;
+const JOINT_TO_PART_TAB = {
+  head: 'head',
+  neck: 'torso',
+  hip: 'torso',
+  leftElbow: 'leftArm',
+  rightElbow: 'rightArm',
+  leftHand: 'leftHand',
+  rightHand: 'rightHand',
+  leftKnee: 'leftLeg',
+  rightKnee: 'rightLeg',
+  leftFoot: 'leftFoot',
+  rightFoot: 'rightFoot',
+};
 
 const defaultPose = () => ({
   head: { x: 640, y: 170 },
@@ -41,6 +58,7 @@ let state = {
     simple4View: false,
     fourViewFace: 'front',
     art: {},
+    requireVisitBeforeStagePose: false,
   },
   frames: [{ pose: defaultPose(), viewYaw: 0 }],
   index: 0,
@@ -125,6 +143,7 @@ function ensurePartArt() {
     simple4View: false,
     fourViewFace: 'front',
     art: {},
+    requireVisitBeforeStagePose: false,
   };
   state.partStudio.mode = state.partStudio.mode === 'reshape' ? 'reshape' : 'draw';
   state.partStudio.presetByPart ??= {};
@@ -169,6 +188,9 @@ function ensurePartArt() {
     ? state.partStudio.fourViewFace
     : 'front';
   if (state.partStudio.simple4View) state.partStudio.mode = 'draw';
+  if (typeof state.partStudio.requireVisitBeforeStagePose !== 'boolean') {
+    state.partStudio.requireVisitBeforeStagePose = !!state.partStudio.wizardDone;
+  }
   for (const p of PART_TABS) {
     const slot = state.partStudio.art[p];
     if (slot == null) {
@@ -697,7 +719,31 @@ function stopPlayback() {
   }
 }
 
+function getPartStudio3dSnapshot() {
+  ensurePartArt();
+  const part = state.partStudio.part;
+  const slot = state.partStudio.art[part];
+  const pose = current().pose;
+  const yaw = frameViewYaw();
+  if (state.partStudio.simple4View && isFourViewArt(slot)) {
+    return {
+      part,
+      pose,
+      mode: 'four',
+      viewYaw: yaw,
+      faces: {
+        front: slot.faces?.front || [],
+        right: slot.faces?.right || [],
+        back: slot.faces?.back || [],
+        left: slot.faces?.left || [],
+      },
+    };
+  }
+  return { part, pose, mode: 'flat', viewYaw: yaw, strokes: [...getStrokesListForPartRender(part)] };
+}
+
 function render() {
+  disposePartStudio3d();
   const playbackOnly = !!state.playing;
   ensurePartArt();
   if (!state.partStudio.wizardDone) {
@@ -750,9 +796,11 @@ function render() {
           <div class="hint">Frame ${state.index + 1} / ${state.frames.length} · ${
             playbackOnly
               ? 'Playback — rig hidden (Part Studio art only)'
-              : state.partStudio.simple4View
-                ? 'Pose the rig · each part has Front/Back/Left/Right art · Turntable picks which side shows'
-                : 'Drag joints to pose'
+              : state.partStudio.requireVisitBeforeStagePose && state.partStudio.wizardDone
+                ? 'Tap the rig to open Part Studio first, then close it to pose joints'
+                : state.partStudio.simple4View
+                  ? 'Pose the rig · each part has Front/Back/Left/Right art · Turntable picks which side shows'
+                  : 'Drag joints to pose'
           } · Space = play/pause</div>
           <div class="stage-viewport">
             <svg id="stage" style="width:${Math.round(state.zoom * 100)}%;max-width:none;" draggable="false" viewBox="0 0 ${W} ${H}" aria-label="Animation stage">${stageSvg(playbackOnly)}</svg>
@@ -820,7 +868,16 @@ function render() {
             <button id="partSmoothCurves" class="small" title="Reset to auto-smooth (Catmull) cubics">Smooth curves</button>
             <button id="partClear" class="small danger">Clear part</button>
           </div>
-          <canvas id="partStudioCanvas" width="360" height="360" aria-label="Part Studio canvas"></canvas>
+          <div class="part-studio-split">
+            <div class="part-2d-col">
+              <div class="hint">2D draw (same as stage rig)</div>
+              <canvas id="partStudioCanvas" width="360" height="360" aria-label="Part Studio canvas"></canvas>
+            </div>
+            <div class="part-3d-col">
+              <div class="hint">3D preview · drag to orbit (Turntable syncs box in 4-side mode)</div>
+              <div id="part3dMount" class="part-3d-mount" aria-label="Three.js part preview"></div>
+            </div>
+          </div>
           <p class="hint">${
             state.partStudio.simple4View
               ? '4-side: pick a body tab, pick Front/Right/Back/Left, draw. Use Turntable on the stage to preview. Full vector tools return when you turn this off (other sides are kept but only Front is used in normal mode).'
@@ -864,6 +921,7 @@ function render() {
     if (!state.partStudio.wizardDone) {
       state.partStudio.wizardDone = true;
     }
+    state.partStudio.requireVisitBeforeStagePose = false;
     render();
   });
   const wizPrev = document.getElementById('wizPrev');
@@ -881,6 +939,7 @@ function render() {
       if (state.partStudio.wizardStep >= PART_TABS.length - 1) {
         state.partStudio.wizardDone = true;
         state.partStudio.open = false;
+        state.partStudio.requireVisitBeforeStagePose = true;
         partDrawing = null;
       } else {
         state.partStudio.wizardStep += 1;
@@ -986,6 +1045,7 @@ function render() {
     if (r) r.textContent = `${Math.round(current().viewYaw)}° → ${renderFaceFromYaw()} on stage`;
     const st = document.getElementById('stage');
     if (st) st.innerHTML = stageSvg(!!state.playing);
+    markPartStudio3dDirty();
   });
   document.getElementById('partClear')?.addEventListener('click', () => {
     const part = state.partStudio.part;
@@ -1004,6 +1064,16 @@ function render() {
   document.getElementById('zoomReset').addEventListener('click', () => { state.zoom = 1; render(); });
   bindStageDrag();
   bindPartStudio();
+  if (state.partStudio.open) {
+    const m = document.getElementById('part3dMount');
+    if (m) {
+      queueMicrotask(() => {
+        mountPartStudio3d(m, getPartStudio3dSnapshot).catch(() => {
+          m.innerHTML = '<p class="hint">3D preview needs network for Three.js (CDN).</p>';
+        });
+      });
+    }
+  }
 }
 
 function bindPartStudio() {
@@ -1327,6 +1397,7 @@ function drawPartStudioCanvas() {
       }
     }
   }
+  markPartStudio3dDirty();
 }
 
 function bindStageDrag() {
@@ -1339,8 +1410,16 @@ function bindStageDrag() {
     e.preventDefault();
     const pt = clientToSvg(svg, e.clientX, e.clientY);
     const exact = e.target?.dataset?.joint || null;
-    const nearest = exact || nearestJointAtPoint(current().pose, pt.x, pt.y);
+    const nearest = exact || nearestJointAtPointWithin(current().pose, pt.x, pt.y, STAGE_JOINT_PICK_R2);
     if (!nearest) return;
+    if (state.partStudio.requireVisitBeforeStagePose && state.partStudio.wizardDone) {
+      state.partStudio.open = true;
+      state.partStudio.part = JOINT_TO_PART_TAB[nearest] || 'head';
+      const idx = PART_TABS.indexOf(state.partStudio.part);
+      if (idx >= 0) state.partStudio.wizardStep = idx;
+      render();
+      return;
+    }
     dragJoint = nearest;
     svg.setPointerCapture(e.pointerId);
     svg.style.cursor = 'grabbing';
@@ -1381,6 +1460,15 @@ function nearestJointAtPoint(pose, x, y) {
     }
   }
   return best;
+}
+
+/** Closest joint only if within maxD2 of (x,y); otherwise null (ignores far-away clicks). */
+function nearestJointAtPointWithin(pose, x, y, maxD2) {
+  const j = nearestJointAtPoint(pose, x, y);
+  if (!j || !pose[j]) return null;
+  const pt = pose[j];
+  const d2 = (pt.x - x) * (pt.x - x) + (pt.y - y) * (pt.y - y);
+  return d2 <= maxD2 ? j : null;
 }
 
 function clientToSvg(svg, clientX, clientY) {

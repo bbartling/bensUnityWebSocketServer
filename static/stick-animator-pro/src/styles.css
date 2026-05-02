@@ -135,7 +135,7 @@ main {
   vertical-align: middle;
 }
 .face-studio-card {
-  width: min(94vw, 620px);
+  width: min(96vw, 920px);
   background: #0f172a;
   border: 1px solid rgba(125, 211, 252, 0.34);
   border-radius: 1rem;
@@ -189,6 +189,37 @@ main {
 .part-preset-label select {
   width: 100%;
   max-width: 100%;
+}
+.part-studio-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .part-studio-split {
+    grid-template-columns: 1fr;
+  }
+}
+.part-2d-col,
+.part-3d-col {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.part-3d-mount {
+  width: 100%;
+  min-height: 280px;
+  height: min(36vh, 320px);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  overflow: hidden;
+  background: #0f172a;
+}
+.part-3d-mount canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
 }
 #partStudioCanvas {
   width: min(100%, 440px);
