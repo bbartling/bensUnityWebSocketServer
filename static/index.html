@@ -12,11 +12,11 @@
         <h1>MQTT ARCADE</h1>
         <p>
           Two seats per game — <strong>Man</strong> and <strong>Boy</strong> — synced over MQTT WebSockets on the public
-          Mosquitto test broker. Open each seat in its own tab or device. On a game’s index page, use <strong>Create room (Man)</strong> or <strong>Join open room (Boy)</strong> to find friends — or pick the same silly room name together.
+          HiveMQ public broker (with fallbacks). Open each seat in its own tab or device. On a game’s index page, use <strong>Create room (Man)</strong> or <strong>Join open room (Boy)</strong> to find friends — or pick the same silly room name together.
         </p>
         <div class="broker-pill">
           <span>BROKER</span>
-          <code>wss://test.mosquitto.org:8081</code>
+          <code>wss://broker.hivemq.com:8884/mqtt (fallbacks if busy)</code>
         </div>
       </header>
 

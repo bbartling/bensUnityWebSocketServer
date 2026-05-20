@@ -465,13 +465,9 @@
     gameID = urlParams.get('game');
   }
 
-  /** Eclipse Mosquitto public test broker (browser WebSocket over TLS). */
-  const BROKER_URL = 'wss://test.mosquitto.org:8081';
-
   document.getElementById('gameInfo').innerHTML =
     `ROOM: <span class="highlight">${gameID}</span> · YOU: <span class="highlight">${playerID}</span>`;
-  document.getElementById('brokerInfo').innerHTML =
-    `MQTT WS: <span class="highlight">${BROKER_URL}</span>`;
+  document.getElementById('brokerInfo').innerHTML = 'MQTT: <span class="highlight">connecting…</span>';
 
   let game = null;
 
@@ -560,105 +556,118 @@
 
   let localConnected = false;
   let remoteConnected = false;
-  let localConnecting = true;
   let remoteTrying = true;
   let lastRemoteMessage = 0;
   const connectStartTime = Date.now();
   const connectionInfo = document.getElementById('connectionInfo');
 
-  function updateConnectionDisplay() {
-    const brokerText = localConnected
-      ? 'BROKER OK'
-      : localConnecting
-        ? 'CONNECTING…'
-        : 'OFFLINE';
-    const brokerColour = localConnected ? '#7dffb3' : localConnecting ? '#ffe08a' : '#ff6b6b';
-    const playerText = remoteConnected
-      ? 'PARTNER LINKED'
-      : remoteTrying
-        ? 'WAITING…'
-        : 'NO PARTNER';
-    const playerColour = remoteConnected ? '#7dffb3' : remoteTrying ? '#ffe08a' : '#ff6b6b';
-    connectionInfo.innerHTML = `MQTT: <span style="color:${brokerColour}">${brokerText}</span> · PARTNER: <span style="color:${playerColour}">${playerText}</span>`;
+  function syncPartnerUi() {
+    if (!mqttLink) {
+      return;
+    }
+    if (remoteConnected) {
+      mqttLink.setPartner('linked');
+    } else if (remoteTrying) {
+      mqttLink.setPartner('waiting', 'Open ' + cfg.remoteLabel + ' with the same ?room= slug, then click Send ready ping.');
+    } else {
+      mqttLink.setPartner('none', 'Partner offline — check room name and broker status above.');
+    }
   }
 
   let client = null;
-  function setupMQTT() {
-    client = mqtt.connect(BROKER_URL);
-    client.on('connect', () => {
-      localConnected = true;
-      localConnecting = false;
-      updateConnectionDisplay();
-      client.subscribe(`tetris/${gameID}/+/state`);
-      client.subscribe(`tetris/${gameID}/+/status`);
-      publishState();
-      if (localStatus !== '—') {
-        publishStatus(localStatus);
-      }
-    });
-    client.on('close', () => {
-      localConnected = false;
-      localConnecting = false;
-      updateConnectionDisplay();
-    });
-    client.on('reconnect', () => {
-      localConnected = false;
-      localConnecting = true;
-      updateConnectionDisplay();
-    });
-    client.on('offline', () => {
-      localConnected = false;
-      localConnecting = false;
-      updateConnectionDisplay();
-    });
-    client.on('message', (topic, message) => {
-      const parts = topic.split('/');
-      const sender = parts[2];
-      if (sender === playerID) {
-        return;
-      }
-      const suffix = parts[3];
-      if (suffix === 'state') {
-        try {
-          const data = JSON.parse(message.toString());
-          remoteScore = typeof data.score === 'number' ? data.score : 0;
-          remoteLines = typeof data.linesTotal === 'number' ? data.linesTotal : 0;
-          if (TETRIS_DEBUG) {
-            const now = Date.now();
-            if (!game._lastMqttLog || now - game._lastMqttLog > 450) {
-              game._lastMqttLog = now;
-              tlog('MQTT state', sender, {
-                partnerPiece: data.piece
-                  ? { type: data.piece.type, pos: data.piece.pos }
-                  : null,
-                thenRemoteLocksAndSettleOntoBoard: true,
-              });
-            }
+  let mqttLink = null;
+
+  function onMqttMessage(topic, message) {
+    const parts = topic.split('/');
+    const sender = parts[2];
+    if (sender === playerID) {
+      return;
+    }
+    const suffix = parts[3];
+    if (suffix === 'state') {
+      try {
+        const data = JSON.parse(message.toString());
+        remoteScore = typeof data.score === 'number' ? data.score : 0;
+        remoteLines = typeof data.linesTotal === 'number' ? data.linesTotal : 0;
+        if (TETRIS_DEBUG) {
+          const now = Date.now();
+          if (!game._lastMqttLog || now - game._lastMqttLog > 450) {
+            game._lastMqttLog = now;
+            tlog('MQTT state', sender, {
+              partnerPiece: data.piece ? { type: data.piece.type, pos: data.piece.pos } : null,
+              thenRemoteLocksAndSettleOntoBoard: true,
+            });
           }
-          game.remotePiece = data.piece;
-          applyRemoteLocks(game, sender, data.board);
-          updateTeamScore();
-          game.settleOntoBoard();
-          game.draw();
-          remoteConnected = true;
-          remoteTrying = false;
-          lastRemoteMessage = Date.now();
-          updateConnectionDisplay();
-        } catch (err) {
-          /* ignore */
         }
-      } else if (suffix === 'status') {
-        try {
-          remoteStatus = message.toString();
-          updateStatusDisplay();
-          remoteConnected = true;
-          remoteTrying = false;
-          lastRemoteMessage = Date.now();
-          updateConnectionDisplay();
-        } catch (err) {
-          /* ignore */
+        game.remotePiece = data.piece;
+        applyRemoteLocks(game, sender, data.board);
+        updateTeamScore();
+        game.settleOntoBoard();
+        game.draw();
+        remoteConnected = true;
+        remoteTrying = false;
+        lastRemoteMessage = Date.now();
+        syncPartnerUi();
+        if (mqttLink) {
+          mqttLink.log('ok', cfg.remoteLabel + ' state received');
         }
+      } catch (err) {
+        /* ignore */
       }
+    } else if (suffix === 'status') {
+      try {
+        remoteStatus = message.toString();
+        updateStatusDisplay();
+        remoteConnected = true;
+        remoteTrying = false;
+        lastRemoteMessage = Date.now();
+        syncPartnerUi();
+        if (mqttLink) {
+          mqttLink.log('ok', cfg.remoteLabel + ' status: ' + remoteStatus);
+        }
+      } catch (err) {
+        /* ignore */
+      }
+    }
+  }
+
+  function setupMQTT() {
+    if (!window.ArcadeMqtt) {
+      connectionInfo.innerHTML = 'MQTT: <span style="color:#ff6b6b">arcade-mqtt.js missing</span>';
+      return;
+    }
+    mqttLink = window.ArcadeMqtt.createLink({
+      brokerInfoEl: document.getElementById('brokerInfo'),
+      connectionInfoEl: connectionInfo,
+      uiRoot: document.getElementById('ui'),
+      partnerHint: 'Open ' + cfg.remoteLabel + ' with the same ?room= slug, then Send ready ping.',
+      onConnected: function (c) {
+        client = c;
+        localConnected = true;
+        c.subscribe(`tetris/${gameID}/+/state`);
+        c.subscribe(`tetris/${gameID}/+/status`);
+        publishState();
+        if (localStatus !== '—') {
+          publishStatus(localStatus);
+        }
+        mqttLink.log('ok', 'Subscribed — waiting for ' + cfg.remoteLabel);
+        syncPartnerUi();
+      },
+      onClose: function () {
+        localConnected = false;
+        remoteConnected = false;
+        remoteTrying = true;
+        syncPartnerUi();
+      },
+      onReconnect: function () {
+        localConnected = false;
+        syncPartnerUi();
+      },
+      onOffline: function () {
+        localConnected = false;
+        syncPartnerUi();
+      },
+      onMessage: onMqttMessage,
     });
   }
 
@@ -674,8 +683,8 @@
   }
 
   game.update();
-  updateConnectionDisplay();
   setupMQTT();
+  syncPartnerUi();
 
   setInterval(() => {
     if (client && client.connected) {
@@ -688,7 +697,7 @@
     if (remoteConnected && now - lastRemoteMessage > 10000) {
       remoteConnected = false;
       remoteTrying = false;
-      updateConnectionDisplay();
+      syncPartnerUi();
     }
     if (
       !remoteConnected &&
@@ -697,7 +706,7 @@
       lastRemoteMessage === 0
     ) {
       remoteTrying = false;
-      updateConnectionDisplay();
+      syncPartnerUi();
     }
   }, 1000);
 })();

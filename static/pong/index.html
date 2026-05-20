@@ -80,12 +80,15 @@
       <h1>MQTT PONG</h1>
       <p>
         Man runs the ball and the <strong>left</strong> paddle. Boy drives the <strong>right</strong> paddle. Controls: <strong>W/S</strong> or
-        <strong>↑/↓</strong>. Broker: <code>wss://test.mosquitto.org:8081</code>
+        <strong>↑/↓</strong>. Broker: <code>wss://broker.hivemq.com:8884/mqtt (fallbacks if busy)</code>
       </p>
       <div id="arcadeRoomPick"></div>
       <p><a class="a" href="/pong/man.html">MAN</a> <a class="b" href="/pong/boy.html">BOY</a></p>
       <p class="back"><a href="/">← Arcade dashboard</a></p>
     </div>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <link rel="stylesheet" href="/arcade-mqtt.css" />
+    <script src="/arcade-mqtt.js"></script>
     <script src="/arcade-room-pick.js"></script>
     <script>
       window.ArcadeRoom &&

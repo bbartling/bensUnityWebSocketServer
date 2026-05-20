@@ -2,3 +2,4 @@ fastapi
 uvicorn
 websockets
 h11
+paho-mqtt>=2.0.0

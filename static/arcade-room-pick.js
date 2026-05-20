@@ -6,7 +6,16 @@
   'use strict';
 
   var STORAGE_PREFIX = 'arcade_room_';
-  var BROKER_URL = 'wss://test.mosquitto.org:8081';
+  var BROKER_CANDIDATES =
+    global.ArcadeMqtt && global.ArcadeMqtt.BROKER_CANDIDATES
+      ? global.ArcadeMqtt.BROKER_CANDIDATES.slice()
+      : [
+          'wss://broker.hivemq.com:8884/mqtt',
+          'wss://test.mosquitto.org:8081/mqtt',
+          'wss://test.mosquitto.org:8080/mqtt',
+        ];
+  var lobbyTryIdx = 0;
+  var lobbyConnected = false;
   var LOBBY_STALE_MS = 50000;
   var HOST_HEARTBEAT_MS = 12000;
 
@@ -533,35 +542,71 @@
       }
     });
 
+    function setLobbyStatus(text) {
+      var status = root.querySelector('.arcade-room-lobby-status');
+      if (status) {
+        status.textContent = text;
+      }
+    }
+
+    function connectLobbyNext() {
+      if (lobbyConnected || lobbyTryIdx >= BROKER_CANDIDATES.length) {
+        if (!lobbyConnected) {
+          setLobbyStatus('Room list offline — pick the same name on both devices.');
+        }
+        return;
+      }
+      if (lobbyClient) {
+        try {
+          lobbyClient.end(true);
+        } catch (e) {
+          /* ignore */
+        }
+        lobbyClient = null;
+      }
+      var url = BROKER_CANDIDATES[lobbyTryIdx];
+      lobbyTryIdx++;
+      setLobbyStatus('Connecting room list (' + lobbyTryIdx + '/' + BROKER_CANDIDATES.length + ')…');
+      lobbyClient = global.mqtt.connect(url, {
+        reconnectPeriod: 5000,
+        connectTimeout: 12000,
+        keepalive: 30,
+      });
+      lobbyClient.on('connect', function () {
+        lobbyConnected = true;
+        lobbyClient.subscribe(lobbySubscribeTopic());
+        setLobbyStatus('Watching for open rooms…');
+        renderOpenList();
+      });
+      lobbyClient.on('error', function () {
+        if (!lobbyConnected) {
+          global.setTimeout(connectLobbyNext, 350);
+        }
+      });
+      lobbyClient.on('message', function (topic, message) {
+        parseLobbyMessage(topic, message);
+        renderOpenList();
+      });
+      lobbyClient.on('close', function () {
+        lobbyConnected = false;
+        setLobbyStatus('Room list reconnecting…');
+      });
+      global.setTimeout(function () {
+        if (!lobbyConnected) {
+          connectLobbyNext();
+        }
+      }, 14000);
+    }
+
     function startLobby() {
       loadMqtt(function (err) {
-        var status = root.querySelector('.arcade-room-lobby-status');
         if (err || !global.mqtt) {
-          if (status) {
-            status.textContent = 'Live room list unavailable — pick the same name on both devices.';
-          }
+          setLobbyStatus('Live room list unavailable — pick the same name on both devices.');
           return;
         }
-        lobbyClient = global.mqtt.connect(BROKER_URL, {
-          reconnectPeriod: 5000,
-          connectTimeout: 12000,
-        });
-        lobbyClient.on('connect', function () {
-          lobbyClient.subscribe(lobbySubscribeTopic());
-          if (status) {
-            status.textContent = 'Watching for open rooms…';
-          }
-          renderOpenList();
-        });
-        lobbyClient.on('message', function (topic, message) {
-          parseLobbyMessage(topic, message);
-          renderOpenList();
-        });
-        lobbyClient.on('close', function () {
-          if (status) {
-            status.textContent = 'Room list reconnecting…';
-          }
-        });
+        lobbyTryIdx = 0;
+        lobbyConnected = false;
+        connectLobbyNext();
       });
     }
 

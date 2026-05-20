@@ -1,0 +1,55 @@
+.arcade-mqtt-log {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px dashed rgba(122, 240, 255, 0.22);
+  background: rgba(0, 0, 0, 0.28);
+  text-align: left;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.arcade-mqtt-log-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.48rem;
+  letter-spacing: 0.1em;
+  color: #7af0ff;
+  margin-bottom: 6px;
+}
+
+.arcade-mqtt-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.58rem;
+  line-height: 1.4;
+}
+
+.arcade-mqtt-log-list li {
+  margin: 2px 0;
+  opacity: 0.92;
+}
+
+.arcade-mqtt-log-ok {
+  color: #7dffb3;
+}
+
+.arcade-mqtt-log-info {
+  color: #9db4ff;
+}
+
+.arcade-mqtt-log-warn {
+  color: #ffe08a;
+}
+
+.arcade-mqtt-log-error {
+  color: #ff9ec8;
+}
+
+.arcade-mqtt-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.58rem;
+  opacity: 0.85;
+  line-height: 1.35;
+}

@@ -11,7 +11,6 @@
     return;
   }
 
-  const BROKER_URL = 'wss://test.mosquitto.org:8081';
   const GAME_ID =
     typeof window.ArcadeRoom !== 'undefined' && window.ArcadeRoom.getRoomId
       ? window.ArcadeRoom.getRoomId('pong')
@@ -209,25 +208,28 @@
 
   document.getElementById('gameInfo').innerHTML =
     `ROOM: <span class="highlight">${GAME_ID}</span> · YOU: <span class="highlight">${cfg.localLabel}</span> · ROLE: <span class="highlight">${cfg.role}</span>`;
-  document.getElementById('brokerInfo').innerHTML =
-    `MQTT WS: <span class="highlight">${BROKER_URL}</span>`;
+  document.getElementById('brokerInfo').innerHTML = 'MQTT: <span class="highlight">connecting…</span>';
 
   let localConnected = false;
-  let localConnecting = true;
   let partnerOk = false;
   let partnerTrying = true;
   let lastPartnerMsg = 0;
   const connectStart = Date.now();
   const connectionInfo = document.getElementById('connectionInfo');
+  let mqttLink = null;
 
-  function updateConn() {
-    const b = localConnected ? 'BROKER OK' : localConnecting ? 'CONNECTING…' : 'OFFLINE';
-    const bc = localConnected ? '#7dffb3' : localConnecting ? '#ffe08a' : '#ff6b6b';
-    const p = partnerOk ? 'PARTNER LINKED' : partnerTrying ? 'WAITING…' : 'NO PARTNER';
-    const pc = partnerOk ? '#7dffb3' : partnerTrying ? '#ffe08a' : '#ff6b6b';
-    connectionInfo.innerHTML = `MQTT: <span style="color:${bc}">${b}</span> · PARTNER: <span style="color:${pc}">${p}</span>`;
+  function syncPartnerUi() {
+    if (!mqttLink) {
+      return;
+    }
+    if (partnerOk) {
+      mqttLink.setPartner('linked');
+    } else if (partnerTrying) {
+      mqttLink.setPartner('waiting', 'Open ' + cfg.remoteLabel + ' with same ?room=, then Send ready ping.');
+    } else {
+      mqttLink.setPartner('none');
+    }
   }
-  updateConn();
 
   let localStatus = '—';
   let remoteStatus = '—';
@@ -462,103 +464,107 @@
   }
   requestAnimationFrame(frame);
 
-  function setupMQTT() {
-    client = mqtt.connect(BROKER_URL);
-    client.on('connect', () => {
-      localConnected = true;
-      localConnecting = false;
-      updateConn();
-      client.subscribe(`pong/${GAME_ID}/+/state`);
-      client.subscribe(`pong/${GAME_ID}/+/status`);
-      if (localStatus !== '—') {
-        publishStatus(localStatus);
+  function onMqttMessage(topic, message) {
+    const parts = topic.split('/');
+    const who = parts[2];
+    const kind = parts[3];
+    if (kind === 'status') {
+      if (who === (cfg.role === 'host' ? GUEST_ID : HOST_ID)) {
+        remoteStatus = message.toString();
+        updateStatusDisplay();
+        partnerOk = true;
+        partnerTrying = false;
+        lastPartnerMsg = Date.now();
+        syncPartnerUi();
+        if (mqttLink) {
+          mqttLink.log('ok', cfg.remoteLabel + ' status: ' + remoteStatus);
+        }
       }
-      if (cfg.role === 'guest') {
-        client.publish(`pong/${GAME_ID}/${GUEST_ID}/state`, JSON.stringify({ rightY: guestRightY }));
-      }
-    });
-    client.on('close', () => {
-      localConnected = false;
-      localConnecting = false;
-      updateConn();
-    });
-    client.on('reconnect', () => {
-      localConnected = false;
-      localConnecting = true;
-      updateConn();
-    });
-    client.on('offline', () => {
-      localConnected = false;
-      localConnecting = false;
-      updateConn();
-    });
-    client.on('message', (topic, message) => {
-      const parts = topic.split('/');
-      const who = parts[2];
-      const kind = parts[3];
-      if (kind === 'status') {
-        if (who === (cfg.role === 'host' ? GUEST_ID : HOST_ID)) {
-          remoteStatus = message.toString();
-          updateStatusDisplay();
+      return;
+    }
+    if (kind !== 'state') {
+      return;
+    }
+    if (cfg.role === 'host') {
+      if (who === GUEST_ID) {
+        try {
+          const data = JSON.parse(message.toString());
+          if (typeof data.rightY === 'number') {
+            remoteRightY = data.rightY;
+          }
           partnerOk = true;
           partnerTrying = false;
           lastPartnerMsg = Date.now();
-          updateConn();
+          syncPartnerUi();
+        } catch (e) {
+          /* ignore */
         }
-        return;
       }
-      if (kind !== 'state') {
-        return;
+    } else if (who === HOST_ID) {
+      try {
+        const data = JSON.parse(message.toString());
+        if (data.ball) {
+          guestSnap.ball = data.ball;
+        }
+        if (typeof data.leftY === 'number') {
+          guestSnap.leftY = data.leftY;
+        }
+        if (typeof data.scoreL === 'number') {
+          guestSnap.scoreL = data.scoreL;
+        }
+        if (typeof data.scoreR === 'number') {
+          guestSnap.scoreR = data.scoreR;
+        }
+        if (data.serveFirst === 'man' || data.serveFirst === 'boy' || data.serveFirst === 'random') {
+          guestSnap.serveFirst = data.serveFirst;
+          updateServeFirstInfoForGuest();
+        }
+        partnerOk = true;
+        partnerTrying = false;
+        lastPartnerMsg = Date.now();
+        syncPartnerUi();
+      } catch (e) {
+        /* ignore */
       }
+    }
+  }
 
-      if (cfg.role === 'host') {
-        if (who === GUEST_ID) {
-          try {
-            const data = JSON.parse(message.toString());
-            if (typeof data.rightY === 'number') {
-              remoteRightY = data.rightY;
-            }
-            partnerOk = true;
-            partnerTrying = false;
-            lastPartnerMsg = Date.now();
-            updateConn();
-          } catch (e) {
-            /* ignore */
-          }
+  function setupMQTT() {
+    if (!window.ArcadeMqtt) {
+      connectionInfo.innerHTML = 'MQTT: <span style="color:#ff6b6b">arcade-mqtt.js missing</span>';
+      return;
+    }
+    mqttLink = window.ArcadeMqtt.createLink({
+      brokerInfoEl: document.getElementById('brokerInfo'),
+      connectionInfoEl: connectionInfo,
+      uiRoot: document.getElementById('ui'),
+      partnerHint: 'Open ' + cfg.remoteLabel + ' with same ?room=, then Send ready ping.',
+      onConnected: function (c) {
+        client = c;
+        localConnected = true;
+        c.subscribe(`pong/${GAME_ID}/+/state`);
+        c.subscribe(`pong/${GAME_ID}/+/status`);
+        if (localStatus !== '—') {
+          publishStatus(localStatus);
         }
-      } else {
-        if (who === HOST_ID) {
-          try {
-            const data = JSON.parse(message.toString());
-            if (data.ball) {
-              guestSnap.ball = data.ball;
-            }
-            if (typeof data.leftY === 'number') {
-              guestSnap.leftY = data.leftY;
-            }
-            if (typeof data.scoreL === 'number') {
-              guestSnap.scoreL = data.scoreL;
-            }
-            if (typeof data.scoreR === 'number') {
-              guestSnap.scoreR = data.scoreR;
-            }
-            if (data.serveFirst === 'man' || data.serveFirst === 'boy' || data.serveFirst === 'random') {
-              guestSnap.serveFirst = data.serveFirst;
-              updateServeFirstInfoForGuest();
-            }
-            partnerOk = true;
-            partnerTrying = false;
-            lastPartnerMsg = Date.now();
-            updateConn();
-          } catch (e) {
-            /* ignore */
-          }
+        if (cfg.role === 'guest') {
+          c.publish(`pong/${GAME_ID}/${GUEST_ID}/state`, JSON.stringify({ rightY: guestRightY }));
         }
-      }
+        mqttLink.log('ok', 'Waiting for ' + cfg.remoteLabel);
+        syncPartnerUi();
+      },
+      onClose: function () {
+        localConnected = false;
+        partnerOk = false;
+        partnerTrying = true;
+        syncPartnerUi();
+      },
+      onMessage: onMqttMessage,
     });
   }
 
   setupMQTT();
+  syncPartnerUi();
 
   setInterval(() => {
     if (client && client.connected) {
@@ -571,11 +577,11 @@
     if (partnerOk && now - lastPartnerMsg > 8000) {
       partnerOk = false;
       partnerTrying = false;
-      updateConn();
+      syncPartnerUi();
     }
     if (partnerTrying && now - connectStart > 12000 && lastPartnerMsg === 0) {
       partnerTrying = false;
-      updateConn();
+      syncPartnerUi();
     }
   }, 1000);
 })();
