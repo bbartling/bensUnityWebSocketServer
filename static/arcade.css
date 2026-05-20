@@ -213,6 +213,13 @@ a.game-card:active {
     #05060a;
 }
 
+.card-visual.scribble {
+  background:
+    radial-gradient(circle at 35% 40%, rgba(255, 158, 200, 0.12) 0%, transparent 45%),
+    radial-gradient(circle at 68% 55%, rgba(122, 240, 255, 0.1) 0%, transparent 42%),
+    #05060a;
+}
+
 .card-visual.mahjong {
   background:
     radial-gradient(circle at 30% 30%, rgba(255, 224, 138, 0.12) 0%, transparent 42%),
@@ -224,13 +231,6 @@ a.game-card:active {
   background:
     radial-gradient(circle at 30% 70%, rgba(255, 200, 0, 0.14) 0%, transparent 42%),
     radial-gradient(circle at 75% 30%, rgba(255, 107, 139, 0.1) 0%, transparent 38%),
-    #05060a;
-}
-
-.card-visual.stick-animator {
-  background:
-    radial-gradient(circle at 28% 26%, rgba(0, 240, 255, 0.12) 0%, transparent 44%),
-    radial-gradient(circle at 72% 74%, rgba(107, 140, 255, 0.11) 0%, transparent 40%),
     #05060a;
 }
 
@@ -461,6 +461,65 @@ footer code {
   box-shadow: 0 0 5px rgba(255, 107, 139, 0.45);
 }
 
+.ico-scribble {
+  position: relative;
+  width: 128px;
+  height: 72px;
+  padding: 12px 16px;
+  background: linear-gradient(165deg, #363e54 0%, #2a3144 42%, #222838 100%);
+  border: 1px solid rgba(255, 158, 200, 0.28);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 4px 0 #141820;
+}
+
+.ico-scribble::before {
+  content: '';
+  position: absolute;
+  inset: 10px 12px 14px;
+  background: #f4f6fa;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.ico-scribble-pen {
+  position: absolute;
+  left: 18px;
+  bottom: 16px;
+  width: 48px;
+  height: 4px;
+  background: #6b8cff;
+  border-radius: 2px;
+  transform: rotate(-18deg);
+  box-shadow: 0 0 8px rgba(107, 140, 255, 0.5);
+  z-index: 2;
+}
+
+.ico-scribble-pen::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  background: #ff6b8b;
+  border-radius: 1px;
+  transform: rotate(18deg);
+}
+
+.ico-scribble-word {
+  position: absolute;
+  right: 22px;
+  top: 22px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.45rem;
+  color: #ff9ec8;
+  letter-spacing: 0.12em;
+  z-index: 2;
+  text-shadow: 0 0 8px rgba(255, 158, 200, 0.45);
+}
+
 .ico-mahjong {
   display: grid;
   grid-template-columns: repeat(4, 20px);
@@ -560,130 +619,4 @@ footer code {
   border-bottom-color: transparent;
   transform: rotate(-35deg);
   pointer-events: none;
-}
-
-/* Stick Animator Pro — animated stick figure preview */
-.ico-stick-animator {
-  position: relative;
-  width: 132px;
-  height: 82px;
-  background: linear-gradient(165deg, #3a4258 0%, #272e42 100%);
-  border: 1px solid rgba(122, 240, 255, 0.26);
-  border-radius: 4px;
-  box-shadow:
-    0 3px 0 #050508,
-    0 8px 20px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-.ico-stick-head,
-.ico-stick-body,
-.ico-stick-arm-l,
-.ico-stick-arm-r,
-.ico-stick-leg-l,
-.ico-stick-leg-r {
-  position: absolute;
-  left: 50%;
-  background: #7af0ff;
-  box-shadow: 0 0 8px rgba(122, 240, 255, 0.35);
-}
-
-.ico-stick-head {
-  width: 14px;
-  height: 14px;
-  margin-left: -7px;
-  top: 12px;
-  border-radius: 50%;
-  border: 2px solid #0a0a10;
-  background: #6b8cff;
-  box-shadow: 0 0 10px rgba(107, 140, 255, 0.4);
-}
-
-.ico-stick-body {
-  width: 4px;
-  height: 24px;
-  margin-left: -2px;
-  top: 26px;
-  border-radius: 2px;
-}
-
-.ico-stick-arm-l,
-.ico-stick-arm-r,
-.ico-stick-leg-l,
-.ico-stick-leg-r {
-  width: 4px;
-  border-radius: 2px;
-  transform-origin: top center;
-}
-
-.ico-stick-arm-l,
-.ico-stick-arm-r {
-  height: 18px;
-  top: 30px;
-}
-
-.ico-stick-arm-l {
-  margin-left: -12px;
-  transform: rotate(35deg);
-  animation: ico-stick-arm-l 0.85s ease-in-out infinite alternate;
-}
-
-.ico-stick-arm-r {
-  margin-left: 8px;
-  transform: rotate(-35deg);
-  animation: ico-stick-arm-r 0.85s ease-in-out infinite alternate;
-}
-
-.ico-stick-leg-l,
-.ico-stick-leg-r {
-  height: 22px;
-  top: 48px;
-}
-
-.ico-stick-leg-l {
-  margin-left: -8px;
-  transform: rotate(24deg);
-  animation: ico-stick-leg-l 0.85s ease-in-out infinite alternate;
-}
-
-.ico-stick-leg-r {
-  margin-left: 4px;
-  transform: rotate(-24deg);
-  animation: ico-stick-leg-r 0.85s ease-in-out infinite alternate;
-}
-
-@keyframes ico-stick-arm-l {
-  from {
-    transform: rotate(25deg);
-  }
-  to {
-    transform: rotate(48deg);
-  }
-}
-
-@keyframes ico-stick-arm-r {
-  from {
-    transform: rotate(-25deg);
-  }
-  to {
-    transform: rotate(-48deg);
-  }
-}
-
-@keyframes ico-stick-leg-l {
-  from {
-    transform: rotate(12deg);
-  }
-  to {
-    transform: rotate(32deg);
-  }
-}
-
-@keyframes ico-stick-leg-r {
-  from {
-    transform: rotate(-12deg);
-  }
-  to {
-    transform: rotate(-32deg);
-  }
 }

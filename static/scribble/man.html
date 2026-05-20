@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>MQTT Scribble — Man</title>
+    <link rel="stylesheet" href="/scribble/scribble.css" />
+    <style>
+      :root {
+        --accent: #6b8cff;
+      }
+    </style>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="/arcade-room-pick.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>MQTT SCRIBBLE DIY</h1>
+        <div class="sub">Man · host · runs rounds &amp; settings · draw when it is your turn</div>
+      </header>
+      <div id="wordBar">Waiting for round…</div>
+      <div id="wordHintBar" hidden></div>
+      <div id="timerBar"><div id="timerFill"></div></div>
+      <div id="boardWrap">
+        <canvas id="gameCanvas" width="640" height="420"></canvas>
+      </div>
+      <div id="score">MAN 0 · BOY 0 · first to 5</div>
+      <div id="ui">
+        <div id="gameInfo"></div>
+        <div id="brokerInfo"></div>
+        <div class="guess-row">
+          <input type="text" id="guessInput" placeholder="Type your guess…" autocomplete="off" disabled />
+          <button type="button" id="guessBtn" disabled>Guess</button>
+        </div>
+        <div id="drawTools" class="draw-tools" style="display: none">
+          <label>Color <input type="color" id="penColor" value="#111111" /></label>
+          <label>Size <input type="range" id="penWidth" min="2" max="24" value="6" /></label>
+          <button type="button" id="clearCanvasBtn" disabled>Clear canvas</button>
+        </div>
+        <fieldset id="hostSettings" class="host-settings">
+          <legend>Room settings (host)</legend>
+          <label
+            >Drawing timer (seconds)
+            <input type="number" id="setDrawTime" min="20" max="180" step="5" value="90" />
+          </label>
+          <p class="hint">How long each drawing round lasts.</p>
+          <label
+            >Hints start after (% of round)
+            <input type="number" id="setHintStart" min="0" max="90" step="5" value="35" />
+          </label>
+          <p class="hint">Before this, the guesser only sees scrambled letters. After, letters lock into place over time.</p>
+          <label
+            >Points to win
+            <input type="number" id="setRoundsWin" min="1" max="20" step="1" value="5" />
+          </label>
+          <label
+            >Scramble style
+            <select id="setScramble">
+              <option value="pool" selected>Shuffled pool (Skribbl-style)</option>
+            </select>
+          </label>
+          <label class="custom-words-toggle">
+            <input type="checkbox" id="setUseCustomWords" />
+            Use custom word list (instead of built-in words)
+          </label>
+          <label
+            >Custom words
+            <textarea
+              id="setCustomWords"
+              class="custom-words-input"
+              rows="4"
+              placeholder="mario;nintendo plumber pikachu;yellow electric mouse link;hero of time"
+            ></textarea>
+          </label>
+          <p class="hint">
+            Skribbl-style: separate entries with spaces, commas, or new lines. Use <code>word;hint</code> so the guesser
+            sees the hint while the answer stays hidden (e.g. <code>mario;nintendo plumber</code>). Multi-word answers
+            without hints: use commas — <code>ice cream, hot dog</code>.
+          </p>
+          <p id="customWordsCount" class="hint custom-words-count">No words parsed yet</p>
+        </fieldset>
+        <button type="button" id="startRoundBtn">Start round</button>
+        <button type="button" id="statusBtn">Send ready ping</button>
+        <div id="statusInfo"></div>
+        <div id="connectionInfo"></div>
+        <p class="nav-other">
+          <a href="/">Dashboard</a> · <a href="/scribble/">Scribble seats</a> · Open <a href="/scribble/boy.html">Boy</a> in
+          another window.
+        </p>
+      </div>
+    </div>
+    <script>
+      window.SCRIBBLE_CONFIG = {
+        role: 'host',
+        localLabel: 'Man',
+        remoteLabel: 'Boy',
+        accentLeft: '#6b8cff',
+        accentRight: '#ff6b8b',
+      };
+    </script>
+    <script>
+      window.ArcadeRoom && window.ArcadeRoom.rewritePartnerLinks('scribble', '/scribble/man.html', '/scribble/boy.html');
+    </script>
+    <script src="/scribble/scribble.js"></script>
+  </body>
+</html>

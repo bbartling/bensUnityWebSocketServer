@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>MQTT Scribble — Pick a seat</title>
+    <link rel="stylesheet" href="/scribble/scribble.css" />
+    <link rel="stylesheet" href="/arcade-room-pick.css" />
+    <style>
+      :root {
+        --accent: #7af0ff;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        overflow: auto;
+      }
+      .card {
+        max-width: 480px;
+        text-align: center;
+        background: linear-gradient(165deg, rgba(22, 32, 48, 0.92) 0%, rgba(12, 16, 24, 0.95) 100%);
+        border: 1px solid rgba(122, 240, 255, 0.25);
+        border-radius: 16px;
+        padding: 28px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+      }
+      .card h1 {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 1.05rem;
+        margin: 0 0 12px;
+        color: #7af0ff;
+        letter-spacing: 0.08em;
+      }
+      .card p {
+        margin: 0 0 16px;
+        font-size: 0.75rem;
+        opacity: 0.85;
+        line-height: 1.5;
+      }
+      .card a {
+        display: inline-block;
+        margin: 6px;
+        padding: 12px 22px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 0.62rem;
+        letter-spacing: 0.1em;
+        color: #061018;
+      }
+      .a {
+        background: #6b8cff;
+        box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+      }
+      .b {
+        background: #ff6b8b;
+        box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+      }
+      .back {
+        margin-top: 20px;
+        font-size: 0.68rem;
+      }
+      .back a {
+        color: #9db4ff;
+        margin: 0;
+        padding: 0;
+        background: none;
+        box-shadow: none;
+        font-family: inherit;
+        font-weight: 400;
+        letter-spacing: normal;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>MQTT SCRIBBLE DIY</h1>
+      <p>
+        Two-player draw &amp; guess over MQTT. Paste custom words like Skribbl.io:
+        <code>mario;nintendo plumber pikachu;yellow electric mouse</code>. The drawer sees the answer; the guesser sees
+        scrambled letters plus your visible hint. Man hosts rounds and settings. Broker:
+        <code>wss://test.mosquitto.org:8081</code>
+      </p>
+      <div id="arcadeRoomPick"></div>
+      <p><a class="a" href="/scribble/man.html">MAN</a> <a class="b" href="/scribble/boy.html">BOY</a></p>
+      <p class="back"><a href="/">← Arcade dashboard</a></p>
+    </div>
+    <script src="/arcade-room-pick.js"></script>
+    <script>
+      window.ArcadeRoom &&
+        window.ArcadeRoom.mount({
+          rootId: 'arcadeRoomPick',
+          gameKey: 'scribble',
+          manPath: '/scribble/man.html',
+          boyPath: '/scribble/boy.html',
+        });
+    </script>
+  </body>
+</html>

@@ -27,8 +27,8 @@ if str(_BASE_DIR) not in sys.path:
 from arcade_game_urls import (
     ARCADE_ROOM_STATIC_ASSETS,
     REQUIRED_HTML_SNIPPETS,
+    SCRIBBLE_STATIC_ASSETS,
     SERVED_HTML_CHECK_PAGES,
-    stick_animator_check_status,
 )
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8877"
@@ -68,8 +68,6 @@ def check_url(url: str) -> tuple[bool, str]:
 
 def main() -> int:
     issues: list[tuple[str, str]] = []
-    stick_on, stick_reason = stick_animator_check_status()
-    print(f"INFO: stick animator route checks {'ENABLED' if stick_on else 'DISABLED'} ({stick_reason})")
     try:
         for path in PAGES:
             body = fetch(BASE + path)
@@ -100,11 +98,11 @@ def main() -> int:
                 ok, msg = check_url(url)
                 if not ok:
                     issues.append((path, f"ref {m!r}: {msg}"))
-        for asset in ARCADE_ROOM_STATIC_ASSETS:
+        for asset in ARCADE_ROOM_STATIC_ASSETS + SCRIBBLE_STATIC_ASSETS:
             aurl = BASE.rstrip("/") + asset
             ok_a, msg_a = check_url(aurl)
             if not ok_a:
-                issues.append((asset, f"arcade room asset: {msg_a}"))
+                issues.append((asset, f"static asset: {msg_a}"))
     except Exception as e:
         print(f"FAIL fetch: {e}")
         print()
@@ -119,15 +117,16 @@ def main() -> int:
         print("--- verification ---")
         print(f"VERIFICATION: FAILED - {len(issues)} issue(s) (see FAIL lines above).")
         return 1
+    n_assets = len(ARCADE_ROOM_STATIC_ASSETS) + len(SCRIBBLE_STATIC_ASSETS)
     print(
-        f"OK: {len(PAGES)} pages + {len(ARCADE_ROOM_STATIC_ASSETS)} room static assets, "
+        f"OK: {len(PAGES)} pages + {n_assets} static assets, "
         f"structure + local assets resolve at {BASE}",
     )
     print()
     print("--- verification ---")
     print(
         f"VERIFICATION: PASSED - no errors: {len(PAGES)} pages, required snippets OK, "
-        f"{len(ARCADE_ROOM_STATIC_ASSETS)} room static assets OK, "
+        f"{n_assets} static assets OK, "
         f"in-page local asset URLs returned HTTP 200 at {BASE}."
     )
     return 0

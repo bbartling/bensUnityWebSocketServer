@@ -29,7 +29,7 @@ from arcade_game_urls import (
     ALLOWED_CONSOLE_WARNING_SUBSTRINGS,
     BROWSER_CONSOLE_CHECK_PAGES,
     ROOM_PICK_BROWSER_FUNCTIONAL_PAGES,
-    stick_animator_check_status,
+    SCRIBBLE_HOST_FUNCTIONAL_PAGE,
 )
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
@@ -165,6 +165,37 @@ def run_arcade_room_picker_smoke(page, path: str) -> list[str]:
     return fails
 
 
+def run_scribble_host_smoke(page) -> list[str]:
+    """Scribble host: custom word textarea updates parsed count (Skribbl word;hint)."""
+    fails: list[str] = []
+    try:
+        textarea = page.locator("#setCustomWords")
+        count_el = page.locator("#customWordsCount")
+        use_custom = page.locator("#setUseCustomWords")
+        if textarea.count() != 1:
+            fails.append("missing #setCustomWords")
+            return fails
+        if count_el.count() != 1:
+            fails.append("missing #customWordsCount")
+            return fails
+        if use_custom.count() != 1:
+            fails.append("missing #setUseCustomWords")
+            return fails
+        textarea.fill("mario;nintendo plumber pikachu;yellow electric mouse")
+        page.wait_for_timeout(350)
+        txt = count_el.inner_text(timeout=4000).lower()
+        if "2 word" not in txt:
+            fails.append(f"custom word parse count expected '2 words', got {txt!r}")
+        use_custom.check(timeout=4000)
+        page.wait_for_timeout(150)
+        canvas = page.locator("#gameCanvas")
+        if canvas.count() != 1:
+            fails.append("missing #gameCanvas on host")
+    except Exception as e:
+        fails.append(f"scribble host smoke: {e}")
+    return fails
+
+
 def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
@@ -183,8 +214,6 @@ def main() -> int:
     exit_code = 0
     n_ok = 0
     n_fail = 0
-    stick_on, stick_reason = stick_animator_check_status()
-    print(f"INFO: stick animator route checks {'ENABLED' if stick_on else 'DISABLED'} ({stick_reason})")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         for path in PAGES:
@@ -223,6 +252,7 @@ def main() -> int:
             bad_warns = blocking_warnings(warns)
             lobber_fails: list[str] = []
             room_fails: list[str] = []
+            scribble_fails: list[str] = []
             if path == "/lobber/game.html":
                 lobber_fails = run_lobber_functional_smoke(page)
                 if lobber_fails:
@@ -238,6 +268,14 @@ def main() -> int:
                     n_fail += 1
                     print(f"FUNCTIONAL.fail {path} (arcade room picker):")
                     for f in room_fails:
+                        print(f"  {f}")
+            if path == SCRIBBLE_HOST_FUNCTIONAL_PAGE:
+                scribble_fails = run_scribble_host_smoke(page)
+                if scribble_fails:
+                    exit_code = 1
+                    n_fail += 1
+                    print(f"FUNCTIONAL.fail {path} (scribble host):")
+                    for f in scribble_fails:
                         print(f"  {f}")
             if bad_errs:
                 exit_code = 1
@@ -257,9 +295,20 @@ def main() -> int:
                     print(f"  {text}")
             elif warns:
                 print(f"CONSOLE.warning (allowlisted) {path}: {len(warns)} message(s)")
-            if not page_errors and not bad_errs and not bad_warns and not lobber_fails and not room_fails:
-                room_ok = ", arcade room picker OK" if path in ROOM_PICK_BROWSER_FUNCTIONAL_PAGES else ""
-                print(f"OK {path} (no errors / no blocking warnings in 3.5s window{room_ok})")
+            if (
+                not page_errors
+                and not bad_errs
+                and not bad_warns
+                and not lobber_fails
+                and not room_fails
+                and not scribble_fails
+            ):
+                extra = ""
+                if path in ROOM_PICK_BROWSER_FUNCTIONAL_PAGES:
+                    extra += ", arcade room picker OK"
+                if path == SCRIBBLE_HOST_FUNCTIONAL_PAGE:
+                    extra += ", scribble host OK"
+                print(f"OK {path} (no errors / no blocking warnings in 3.5s window{extra})")
                 n_ok += 1
 
             page.close()
