@@ -504,6 +504,10 @@
   }
 
   let client = null;
+  let lastStatePublishMs = 0;
+  let lastHintOnlyPublishMs = 0;
+  const STATE_PUBLISH_MIN_MS = 90;
+  const HINT_PUBLISH_MIN_MS = 500;
 
   function publishStatus(s) {
     if (client && client.connected) {
@@ -512,9 +516,19 @@
     }
   }
 
-  function publishGameState() {
+  function publishGameState(opts) {
     if (!client || !client.connected || cfg.role !== 'host') {
       return;
+    }
+    const now = Date.now();
+    const force = Boolean(opts && opts.force);
+    const minGap = force ? STATE_PUBLISH_MIN_MS : HINT_PUBLISH_MIN_MS;
+    if (!force && now - lastStatePublishMs < minGap) {
+      return;
+    }
+    lastStatePublishMs = now;
+    if (!force) {
+      lastHintOnlyPublishMs = now;
     }
     client.publish(`scribble/${GAME_ID}/${HOST_ID}/state`, JSON.stringify(publishPayload()));
   }
@@ -617,7 +631,7 @@
     } else if (hostState.scores.Boy >= winTarget) {
       hostState.message = 'BOY WINS THE MATCH!';
     }
-    publishGameState();
+    publishGameState({ force: true });
   }
 
   function startRoundHost() {
@@ -640,7 +654,7 @@
     hostState.timerEnd = Date.now() + hostState.settings.drawTimeSec * 1000;
     hostState.message = `${hostState.drawer} is drawing…`;
     hostRefreshHint();
-    publishGameState();
+    publishGameState({ force: true });
     beep(440, 0.06);
   }
 
@@ -666,7 +680,7 @@
       return;
     }
     hostState.message = `Nope: "${guess}"`;
-    publishGameState();
+    publishGameState({ force: true });
     beep(140, 0.03);
   }
 
@@ -708,7 +722,7 @@
           hostState.settings = readHostSettingsFromDom();
           saveSettings(hostState.settings);
           updateCustomWordsCount();
-          publishGameState();
+          publishGameState({ force: true });
         });
       });
     }
@@ -737,7 +751,7 @@
           nextDrawerAfterRound();
           hostState.phase = 'lobby';
           hostState.message = `Next: ${hostState.drawer} draws. Host starts round.`;
-          publishGameState();
+          publishGameState({ force: true });
           refreshStartBtnLabel();
           return;
         }
@@ -785,7 +799,7 @@
       }
       if (cfg.role === 'host') {
         hostState.strokes = [];
-        publishGameState();
+        publishGameState({ force: true });
       } else {
         publishGuestAction({ clearCanvas: true });
       }
@@ -832,7 +846,7 @@
 
   function pushStrokeHost(stroke) {
     hostState.strokes.push(stroke);
-    publishGameState();
+    publishGameState({ force: true });
   }
 
   function onPointerDown(e) {
@@ -914,7 +928,10 @@
     if (cfg.role === 'host') {
       hostTick();
       if (hostState.phase === 'draw') {
-        publishGameState();
+        const now = Date.now();
+        if (now - lastHintOnlyPublishMs >= HINT_PUBLISH_MIN_MS) {
+          publishGameState();
+        }
       }
     } else {
       const s = guestMirror;
@@ -926,7 +943,16 @@
   }, 250);
 
   function setupMQTT() {
-    client = mqtt.connect(BROKER_URL);
+    client = mqtt.connect(BROKER_URL, {
+      reconnectPeriod: 4000,
+      connectTimeout: 15000,
+      keepalive: 30,
+    });
+    client.on('error', () => {
+      localConnected = false;
+      localConnecting = false;
+      updateConn();
+    });
     client.on('connect', () => {
       localConnected = true;
       localConnecting = false;
@@ -934,7 +960,7 @@
       if (cfg.role === 'host') {
         client.subscribe(`scribble/${GAME_ID}/${GUEST_ID}/action`);
         client.subscribe(`scribble/${GAME_ID}/+/status`);
-        publishGameState();
+        publishGameState({ force: true });
       } else {
         client.subscribe(`scribble/${GAME_ID}/${HOST_ID}/state`);
         client.subscribe(`scribble/${GAME_ID}/+/status`);
@@ -978,11 +1004,11 @@
           const data = JSON.parse(message.toString());
           if (data.clearCanvas && hostState.drawer === GUEST_ID && hostState.phase === 'draw') {
             hostState.strokes = [];
-            publishGameState();
+            publishGameState({ force: true });
           }
           if (data.stroke && hostState.drawer === GUEST_ID && hostState.phase === 'draw') {
             hostState.strokes.push(data.stroke);
-            publishGameState();
+            publishGameState({ force: true });
           }
           if (typeof data.guess === 'string') {
             checkGuessHost(data.guess);
@@ -1021,7 +1047,7 @@
 
   setInterval(() => {
     if (cfg.role === 'host' && client && client.connected) {
-      publishGameState();
+      publishGameState({ force: true });
     }
   }, 5000);
 

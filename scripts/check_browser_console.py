@@ -130,18 +130,29 @@ def run_lobber_functional_smoke(page) -> list[str]:
 
 
 def run_arcade_room_picker_smoke(page, path: str) -> list[str]:
-    """MQTT silly-room picker: suggestions exist, click sets matching ?room= on Man/Boy links."""
+    """Room picker: create/join modes, create flow sets matching ?room= on Man/Boy links."""
     fails: list[str] = []
     try:
         root = page.locator("#arcadeRoomPick")
         if root.count() != 1:
             fails.append("missing #arcadeRoomPick")
             return fails
+        if page.locator(".arcade-room-mode[data-mode='create']").count() < 1:
+            fails.append("missing create mode tab")
+        if page.locator(".arcade-room-mode[data-mode='join']").count() < 1:
+            fails.append("missing join mode tab")
+        if page.locator(".arcade-room-create-btn").count() < 1:
+            fails.append("missing .arcade-room-create-btn")
+            return fails
+        if page.locator('input[name="arcadeWaitSeat"][value="Boy"]').count() < 1:
+            fails.append("missing Boy wait-seat radio")
         sug = page.locator(".arcade-room-sug-btn")
         if sug.count() < 1:
             fails.append("no .arcade-room-sug-btn suggestions")
             return fails
         sug.first.click(timeout=5000)
+        page.wait_for_timeout(200)
+        page.locator(".arcade-room-create-btn").click(timeout=5000)
         page.wait_for_timeout(250)
         man_a = page.locator("a.a").first
         boy_b = page.locator("a.b").first

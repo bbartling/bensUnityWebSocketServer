@@ -148,6 +148,9 @@
   }
   const REST_FRICTION = 0.9;
   const BOUNCE_DAMP = 0.52;
+  /** Below this speed while overlapping a block, force a separation bounce (fixes corner stick). */
+  const ANTI_STUCK_SPEED = 3.6;
+  const MIN_SEPARATE_OUT = 2.15;
   const STRUCT_GRAVITY = 0.34;
   const STRUCT_MAX_FALL = 10.5;
   const STRUCT_REST_EPS = 0.45;
@@ -2304,6 +2307,61 @@
     }
   }
 
+  function reflectAndSeparate(p, cn, bm, opts) {
+    const o = opts || {};
+    const minOut = o.minOut != null ? o.minOut : MIN_SEPARATE_OUT * bm;
+    const minTan = o.minTan != null ? o.minTan : 0.92 * bm;
+    const vn = p.vx * cn.nx + p.vy * cn.ny;
+    const spd = Math.hypot(p.vx, p.vy);
+    if (vn < 0) {
+      p.vx -= 2 * vn * cn.nx * bm;
+      p.vy -= 2 * vn * cn.ny * bm;
+    }
+    if (cn.pen > 0.01 && (vn < 0.22 || spd < ANTI_STUCK_SPEED)) {
+      p.vx += cn.nx * minOut;
+      p.vy += cn.ny * minOut;
+      const tx = -cn.ny;
+      const ty = cn.nx;
+      const tv = p.vx * tx + p.vy * ty;
+      const sgn = tv >= 0 ? 1 : -1;
+      p.vx += tx * sgn * minTan;
+      p.vy += ty * sgn * minTan * 0.72;
+    }
+  }
+
+  /** If still overlapping solids with little speed, blast along the deepest normal (corner wedge fix). */
+  function applyAntiStuckImpulse(p) {
+    const er = projectileRadiusWorld();
+    const pr = p.power || defaultPower();
+    const bm = (pr.bounceMul || 1) * BOUNCE_DAMP;
+    let bestCn = null;
+    let bestPen = 0;
+    for (const b of towers) {
+      if (b.hp <= 0 || b.kind === 'lava') {
+        continue;
+      }
+      if (b.kind !== 'vine' && !isMetalKind(b.kind) && b.kind !== 'wood' && b.kind !== 'stone' && b.kind !== 'villain') {
+        continue;
+      }
+      if (!circleRectHit(p.x, p.y, er, b)) {
+        continue;
+      }
+      const cn = contactNormalForRect(p, b, er);
+      if (cn.pen > bestPen) {
+        bestPen = cn.pen;
+        bestCn = cn;
+      }
+    }
+    if (!bestCn || bestPen < 0.008) {
+      return;
+    }
+    const spd = Math.hypot(p.vx, p.vy);
+    if (bestPen > 0.014 || spd < ANTI_STUCK_SPEED) {
+      reflectAndSeparate(p, bestCn, bm, { minOut: MIN_SEPARATE_OUT * 1.15 * bm, minTan: 1.05 * bm });
+      p._stickFrames = 0;
+    }
+  }
+
   /** Overlapping structural blocks + contact normal (for corner / stuck diagnosis). */
   function physicsSolidHitsSummary(p, er) {
     const hits = [];
@@ -2380,12 +2438,16 @@
       const b = bestB;
       if (b.kind === 'vine') {
         const cn = contactNormalForRect(p, b, er);
-        p.x += cn.nx * (cn.pen * 0.52 + 0.06);
-        p.y += cn.ny * (cn.pen * 0.52 + 0.06);
-        p.vx *= 0.16;
-        p.vy = p.vy * 0.2 + 0.14;
-        p.spin = (p.spin || 0) * 0.88;
-        p.vineStuck = true;
+        p.x += cn.nx * (cn.pen * 0.55 + 0.08);
+        p.y += cn.ny * (cn.pen * 0.55 + 0.08);
+        const bmV = (pr.bounceMul || 1) * BOUNCE_DAMP * 0.85;
+        reflectAndSeparate(p, cn, bmV, { minOut: 1.65 * bmV, minTan: 1.1 * bmV });
+        p.vx *= 0.72;
+        p.vy *= 0.72;
+        p.spin = (p.spin || 0) * 0.92;
+        if (Math.hypot(p.vx, p.vy) < 0.35) {
+          p.vineStuck = true;
+        }
         beep(175, 0.028);
         continue;
       }
@@ -2403,20 +2465,12 @@
           if (vn < -0.22) {
             p.structureBounces = (p.structureBounces || 0) + 1;
           }
-          if (vn < -0.06) {
-            p.vx -= 2 * vn * cn.nx * bmPin;
-            p.vy -= 2 * vn * cn.ny * bmPin;
-          } else if (Math.abs(vn) < 0.32 && cn.pen > 0.035) {
-            const tx = -cn.ny;
-            const ty = cn.nx;
-            const sgn = p.vx * tx + p.vy * ty >= 0 ? 1 : -1;
-            const roll = 1.05 * bmPin;
-            p.vx += tx * sgn * roll;
-            p.vy += ty * sgn * roll * 0.72;
-          }
+          reflectAndSeparate(p, cn, bmPin, { minOut: 1.9 * bmPin, minTan: 1.0 * bmPin });
           const sp = p.spin || SPIN_BASE;
           p.spin = sp * 1.05 + (Math.random() - 0.5) * 3.5;
           beep(268, 0.02);
+        } else if (cn.pen > 0.02 && Math.hypot(p.vx, p.vy) < ANTI_STUCK_SPEED) {
+          reflectAndSeparate(p, cn, (pr.bounceMul || 1) * BOUNCE_DAMP, { minOut: 2.0, minTan: 1.05 });
         }
         continue;
       }
@@ -2432,16 +2486,7 @@
       if (vn < -0.28 && (b.kind === 'wood' || b.kind === 'stone')) {
         p.structureBounces = (p.structureBounces || 0) + 1;
       }
-      if (vn < 0) {
-        p.vx -= 2 * vn * cn.nx * bm;
-        p.vy -= 2 * vn * cn.ny * bm;
-      } else if (Math.abs(vn) < 0.34 && (b.kind === 'wood' || b.kind === 'stone') && cn.pen > 0.03) {
-        const tx = -cn.ny;
-        const ty = cn.nx;
-        const sgn = p.vx * tx + p.vy * ty >= 0 ? 1 : -1;
-        p.vx += tx * sgn * 0.88 * bm;
-        p.vy += ty * sgn * 0.62 * bm;
-      }
+      reflectAndSeparate(p, cn, bm);
       const needRic = wallBouncesRequired();
       const villainArmored = b.kind === 'villain' && needRic > 0 && (p.structureBounces || 0) < needRic;
       if (villainArmored) {
@@ -2478,17 +2523,18 @@
     if (strongestSolidCn) {
       const vn = p.vx * strongestSolidCn.nx + p.vy * strongestSolidCn.ny;
       const spd = Math.hypot(p.vx, p.vy);
-      if (vn > -0.12 || (strongestSolidPen > 0.045 && spd < 2.1)) {
-        p.vx += strongestSolidCn.nx * 1.25;
-        p.vy += strongestSolidCn.ny * 1.25 - 0.08;
-        p.spin = (p.spin || SPIN_BASE) * 0.9;
+      if (vn > -0.08 || (strongestSolidPen > 0.028 && spd < ANTI_STUCK_SPEED)) {
+        reflectAndSeparate(p, strongestSolidCn, (pr.bounceMul || 1) * BOUNCE_DAMP, {
+          minOut: 2.35,
+          minTan: 1.15,
+        });
+        p.spin = (p.spin || SPIN_BASE) * 0.92;
         p._stickFrames = (p._stickFrames || 0) + 1;
       } else {
         p._stickFrames = 0;
       }
-      if ((p._stickFrames || 0) > 12) {
-        p.vx += strongestSolidCn.nx * 1.8;
-        p.vy += strongestSolidCn.ny * 1.5 - 0.12;
+      if ((p._stickFrames || 0) > 3) {
+        reflectAndSeparate(p, strongestSolidCn, (pr.bounceMul || 1) * BOUNCE_DAMP, { minOut: 2.8, minTan: 1.35 });
         p._stickFrames = 0;
       }
     } else {
@@ -2595,9 +2641,15 @@ function contactNormalForRect(p, b, er) {
         break;
       }
       const cn = contactNormalForRect(p, bestB, er);
-      const sh = Math.max(bestPen, 0.06) * 0.78 + 0.1;
+      const sh = Math.max(bestPen, 0.06) * 0.78 + 0.12;
       p.x += cn.nx * sh;
       p.y += cn.ny * sh;
+      const pr = p.power || defaultPower();
+      const bm = (pr.bounceMul || 1) * BOUNCE_DAMP;
+      if (bestPen > 0.012) {
+        p.vx += cn.nx * 0.42 * bm;
+        p.vy += cn.ny * 0.42 * bm;
+      }
       pushes++;
     }
     return pushes;
@@ -2675,6 +2727,7 @@ function contactNormalForRect(p, b, er) {
         return;
       }
       p._depenSubstepPushes += dePenetrateProjectile(p);
+      applyAntiStuckImpulse(p);
     }
     if (LOBBER_PHYS_LOG && p._depenSubstepPushes > 0) {
       physLogThrottle(p, 'depenSum', 120, () => {
@@ -2683,6 +2736,7 @@ function contactNormalForRect(p, b, er) {
     }
 
     p.rot += (p.spin || SPIN_BASE) * dt;
+    applyAntiStuckImpulse(p);
 
     const spd = Math.hypot(p.vx, p.vy);
     const grounded = p.y + er >= GROUND_Y - 0.5;
