@@ -23,9 +23,14 @@
       </header>
       <div id="wordBar">Waiting for round…</div>
       <div id="wordHintBar" hidden></div>
-      <div id="timerBar"><div id="timerFill"></div></div>
+      <div id="timerRow" hidden>
+        <span id="timerText">—</span>
+        <div id="timerBar"><div id="timerFill"></div></div>
+      </div>
+      <div id="guessFeed" aria-live="polite"></div>
+      <div id="guessPopup" hidden></div>
       <div id="boardWrap">
-        <canvas id="gameCanvas" width="640" height="420"></canvas>
+        <canvas id="gameCanvas" width="1280" height="840"></canvas>
       </div>
       <div id="score">MAN 0 · BOY 0 · first to 5</div>
       <div id="ui">
@@ -82,7 +87,7 @@
           </p>
           <p id="customWordsCount" class="hint custom-words-count">No words parsed yet</p>
         </fieldset>
-        <button type="button" id="startRoundBtn">Start round</button>
+        <button type="button" id="startRoundBtn">Start game</button>
         <button type="button" id="statusBtn">Send ready ping</button>
         <div id="statusInfo"></div>
         <div id="connectionInfo"></div>

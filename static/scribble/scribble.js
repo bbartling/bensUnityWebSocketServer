@@ -60,27 +60,79 @@
     'time machine',
   ];
 
-  const W = 640;
-  const H = 420;
+  const W = 1280;
+  const H = 840;
+  const REVEAL_AUTO_MS = 4000;
+  const GUESS_POPUP_MS = 2200;
 
   let audioCtx = null;
-  function beep(freq, dur) {
+  function ensureAudio() {
     if (!audioCtx) {
       try {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       } catch (e) {
-        return;
+        return false;
       }
+    }
+    return true;
+  }
+
+  function toneAt(freq, start, dur, type, vol) {
+    if (!ensureAudio()) {
+      return;
     }
     const o = audioCtx.createOscillator();
     const g = audioCtx.createGain();
+    o.type = type || 'square';
     o.frequency.value = freq;
-    o.type = 'square';
-    g.gain.value = 0.035;
+    g.gain.setValueAtTime(vol || 0.045, start);
+    g.gain.exponentialRampToValueAtTime(0.001, start + dur);
     o.connect(g);
     g.connect(audioCtx.destination);
-    o.start();
-    o.stop(audioCtx.currentTime + dur);
+    o.start(start);
+    o.stop(start + dur + 0.02);
+  }
+
+  function beep(freq, dur) {
+    if (!ensureAudio()) {
+      return;
+    }
+    toneAt(freq, audioCtx.currentTime, dur, 'square', 0.035);
+  }
+
+  /** Classic game-show wrong buzzer */
+  function sfxWrong() {
+    if (!ensureAudio()) {
+      return;
+    }
+    const t = audioCtx.currentTime;
+    toneAt(220, t, 0.18, 'sawtooth', 0.07);
+    toneAt(180, t + 0.14, 0.22, 'sawtooth', 0.06);
+    toneAt(140, t + 0.32, 0.28, 'triangle', 0.05);
+  }
+
+  /** Short fanfare when someone guesses correctly */
+  function sfxWin() {
+    if (!ensureAudio()) {
+      return;
+    }
+    const t = audioCtx.currentTime;
+    [523, 659, 784, 1047].forEach((f, i) => {
+      toneAt(f, t + i * 0.11, 0.16, 'square', 0.05);
+    });
+    toneAt(1047, t + 0.48, 0.35, 'square', 0.04);
+  }
+
+  /** Countdown-expired buzzer */
+  function sfxTimesUp() {
+    if (!ensureAudio()) {
+      return;
+    }
+    const t = audioCtx.currentTime;
+    for (let i = 0; i < 10; i++) {
+      toneAt(380 - i * 8, t + i * 0.09, 0.08, 'square', 0.06);
+    }
+    toneAt(120, t + 0.95, 0.45, 'sawtooth', 0.07);
   }
 
   function defaultSettings() {
@@ -136,6 +188,14 @@
   function pickWordEntry(settings) {
     const pool = getWordPool(settings);
     return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function buildWordDeck(settings) {
+    const pool = getWordPool(settings);
+    const seed = hashSeed(
+      GAME_ID + '|' + (settings.useCustomWords ? settings.customWordsRaw : 'builtin') + '|' + pool.length,
+    );
+    return seededShuffle(pool.slice(), seed);
   }
 
   function loadSettings() {
@@ -267,8 +327,11 @@
       roundHint: '',
       drawerWord: '',
       lastGuess: '',
+      guessLog: [],
+      wordNum: 0,
+      deckTotal: 0,
       roundWinner: null,
-      message: 'Host: pick settings and start a round.',
+      message: 'Host: load words, pick settings, then Start game.',
     };
   }
 
@@ -276,10 +339,20 @@
   const ctx = canvas.getContext('2d');
   const wordBar = document.getElementById('wordBar');
   const wordHintBar = document.getElementById('wordHintBar');
+  const timerRow = document.getElementById('timerRow');
+  const timerText = document.getElementById('timerText');
   const timerFill = document.getElementById('timerFill');
+  const guessFeed = document.getElementById('guessFeed');
+  const guessPopup = document.getElementById('guessPopup');
   const scoreEl = document.getElementById('score');
   const guessInput = document.getElementById('guessInput');
   const guessBtn = document.getElementById('guessBtn');
+
+  let hostWordDeck = [];
+  let hostDeckIndex = 0;
+  let autoNextTimer = null;
+  let guessPopupTimer = null;
+  let seenGuessCount = 0;
 
   function syncCanvasSize() {
     const wrap = document.getElementById('boardWrap');
@@ -406,26 +479,127 @@
     }
   }
 
+  function formatTimerMs(ms) {
+    const sec = Math.max(0, Math.ceil(ms / 1000));
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
   function updateTimerBar(s) {
-    if (s.phase !== 'draw' || !s.timerEnd) {
-      timerFill.style.transform = 'scaleX(1)';
+    const show = s.phase === 'draw' && s.timerEnd;
+    if (timerRow) {
+      timerRow.hidden = !show;
+    }
+    if (!show) {
+      if (timerFill) {
+        timerFill.style.transform = 'scaleX(1)';
+      }
+      if (timerText) {
+        timerText.textContent = '—';
+        timerText.classList.remove('urgent');
+      }
       return;
     }
     const total = s.settings.drawTimeSec * 1000;
     const left = Math.max(0, s.timerEnd - Date.now());
     const pct = total > 0 ? left / total : 0;
-    timerFill.style.transform = `scaleX(${pct})`;
+    if (timerFill) {
+      timerFill.style.transform = 'scaleX(' + pct + ')';
+    }
+    if (timerText) {
+      timerText.textContent = formatTimerMs(left);
+      timerText.classList.toggle('urgent', left <= 10000);
+    }
+  }
+
+  function renderGuessFeed(log) {
+    if (!guessFeed) {
+      return;
+    }
+    guessFeed.innerHTML = '';
+    const items = Array.isArray(log) ? log : [];
+    for (let i = 0; i < items.length; i++) {
+      const g = items[i];
+      const el = document.createElement('div');
+      el.className = 'guess-feed-item ' + (g.correct ? 'win' : 'wrong');
+      el.textContent = g.correct
+        ? g.player + ' guessed it: "' + g.text + '"'
+        : g.player + ' tried: "' + g.text + '"';
+      guessFeed.appendChild(el);
+    }
+    if (guessFeed.lastElementChild) {
+      guessFeed.lastElementChild.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function showGuessPopup(kind, title, sub) {
+    if (!guessPopup) {
+      return;
+    }
+    guessPopup.hidden = false;
+    guessPopup.className = kind;
+    guessPopup.innerHTML =
+      '<div class="guess-popup-card"><div class="guess-popup-title">' +
+      title +
+      '</div><div class="guess-popup-sub">' +
+      (sub || '') +
+      '</div></div>';
+    clearTimeout(guessPopupTimer);
+    guessPopupTimer = setTimeout(function () {
+      guessPopup.hidden = true;
+    }, GUESS_POPUP_MS);
+  }
+
+  function syncGuessUi(s) {
+    const log = s.guessLog || [];
+    renderGuessFeed(log);
+    while (seenGuessCount < log.length) {
+      const g = log[seenGuessCount];
+      if (g.correct) {
+        showGuessPopup('win', g.player + ' got it!', '"' + g.text + '"');
+        sfxWin();
+      } else {
+        showGuessPopup('wrong', 'Wrong guess', g.player + ': "' + g.text + '"');
+        sfxWrong();
+      }
+      seenGuessCount += 1;
+    }
+  }
+
+  function pushGuessLog(player, text, correct) {
+    const entry = { player: player, text: text, correct: correct };
+    hostState.guessLog.push(entry);
+    if (hostState.guessLog.length > 20) {
+      hostState.guessLog.shift();
+    }
+    hostState.lastGuess = text;
+    seenGuessCount = hostState.guessLog.length;
+    renderGuessFeed(hostState.guessLog);
+    if (correct) {
+      showGuessPopup('win', player + ' got it!', '"' + text + '"');
+      sfxWin();
+    } else {
+      showGuessPopup('wrong', 'Wrong guess', player + ': "' + text + '"');
+      sfxWrong();
+    }
   }
 
   function setScoreText(s) {
     const win = s.settings.roundsToWin;
-    scoreEl.textContent = `MAN ${s.scores.Man} · BOY ${s.scores.Boy} · first to ${win}`;
+    let txt = 'MAN ' + s.scores.Man + ' · BOY ' + s.scores.Boy;
+    if (s.deckTotal > 0 && s.wordNum > 0) {
+      txt += ' · word ' + s.wordNum + '/' + s.deckTotal;
+    }
+    txt += ' · first to ' + win;
+    scoreEl.textContent = txt;
   }
 
   function updateUiFromState(s) {
     setScoreText(s);
     updateWordDisplay(s);
     updateTimerBar(s);
+    syncGuessUi(s);
     const drawing = s.phase === 'draw' && amDrawer(s);
     const guessing = amGuesser(s);
     canvas.classList.toggle('draw-disabled', !drawing);
@@ -493,6 +667,9 @@
       guesserHint: hostState.guesserHint,
       roundHint: hostRoundHint,
       lastGuess: hostState.lastGuess,
+      guessLog: hostState.guessLog,
+      wordNum: hostState.wordNum,
+      deckTotal: hostState.deckTotal,
       roundWinner: hostState.roundWinner,
       message: hostState.message,
     };
@@ -615,56 +792,170 @@
 
   let refreshStartBtnLabel = function () {};
 
+  function matchIsOver() {
+    const win = hostState.settings.roundsToWin;
+    return hostState.scores.Man >= win || hostState.scores.Boy >= win;
+  }
+
+  function clearAutoNext() {
+    if (autoNextTimer) {
+      clearTimeout(autoNextTimer);
+      autoNextTimer = null;
+    }
+  }
+
+  function scheduleAutoNextRound() {
+    clearAutoNext();
+    autoNextTimer = setTimeout(function () {
+      autoNextTimer = null;
+      if (cfg.role !== 'host') {
+        return;
+      }
+      if (hostState.phase !== 'reveal') {
+        return;
+      }
+      if (matchIsOver()) {
+        hostState.phase = 'lobby';
+        hostState.message =
+          hostState.scores.Man >= hostState.settings.roundsToWin
+            ? 'MAN WINS THE MATCH! Host: Start game for rematch.'
+            : 'BOY WINS THE MATCH! Host: Start game for rematch.';
+        refreshStartBtnLabel();
+        publishGameState({ force: true });
+        return;
+      }
+      nextDrawerAfterRound();
+      startRoundHost();
+    }, REVEAL_AUTO_MS);
+  }
+
+  function initWordDeck() {
+    hostState.settings = readHostSettingsFromDom();
+    const pool = getWordPool(hostState.settings);
+    if (!pool.length) {
+      hostState.message = 'Add custom words (word;hint) or turn off custom list.';
+      publishGameState({ force: true });
+      return false;
+    }
+    hostWordDeck = buildWordDeck(hostState.settings);
+    hostDeckIndex = 0;
+    hostState.deckTotal = hostWordDeck.length;
+    return true;
+  }
+
+  function pickNextWordFromDeck() {
+    if (!hostWordDeck.length) {
+      if (!initWordDeck()) {
+        return null;
+      }
+    }
+    if (hostDeckIndex >= hostWordDeck.length) {
+      hostWordDeck = buildWordDeck(hostState.settings);
+      hostDeckIndex = 0;
+    }
+    const entry = hostWordDeck[hostDeckIndex];
+    hostDeckIndex += 1;
+    hostState.wordNum = hostDeckIndex;
+    return entry;
+  }
+
+  function resetMatchHost() {
+    clearAutoNext();
+    hostState.scores = { Man: 0, Boy: 0 };
+    hostState.round = 0;
+    hostState.drawer = 'Man';
+    hostWordDeck = [];
+    hostDeckIndex = 0;
+    seenGuessCount = 0;
+    initWordDeck();
+  }
+
   function endRoundHost(reason, winner) {
     hostState.phase = 'reveal';
     hostState.roundWinner = winner;
     refreshStartBtnLabel();
     if (winner === 'Man' || winner === 'Boy') {
       hostState.scores[winner] += 1;
-      hostState.message = `${winner} guessed it!`;
-      beep(720, 0.12);
+      hostState.message = winner + ' guessed it!';
     } else {
       hostState.message = reason || 'Time is up!';
-      beep(200, 0.1);
+      showGuessPopup('timesup', "Time's up!", 'Nobody guessed the word');
+      sfxTimesUp();
     }
     const winTarget = hostState.settings.roundsToWin;
     if (hostState.scores.Man >= winTarget) {
       hostState.message = 'MAN WINS THE MATCH!';
+      clearAutoNext();
     } else if (hostState.scores.Boy >= winTarget) {
       hostState.message = 'BOY WINS THE MATCH!';
+      clearAutoNext();
+    } else {
+      const nextDr = hostState.drawer === 'Man' ? 'Boy' : 'Man';
+      hostState.message += ' · Next: ' + nextDr + ' draws in ' + REVEAL_AUTO_MS / 1000 + 's…';
+      scheduleAutoNextRound();
     }
     publishGameState({ force: true });
+    updateUiFromState(hostState);
   }
 
   function startRoundHost() {
-    if (hostState.scores.Man >= hostState.settings.roundsToWin || hostState.scores.Boy >= hostState.settings.roundsToWin) {
-      hostState.scores = { Man: 0, Boy: 0 };
-      hostState.message = 'New match — scores reset.';
-    }
+    clearAutoNext();
     hostState.settings = readHostSettingsFromDom();
     saveSettings(hostState.settings);
-    const entry = pickWordEntry(hostState.settings);
+
+    const entry = pickNextWordFromDeck();
+    if (!entry) {
+      return;
+    }
     hostSecretWord = entry.word;
     hostRoundHint = entry.hint || '';
     hostState.roundHint = hostRoundHint;
     hostState.round += 1;
     hostState.roundSeed = hashSeed(hostSecretWord + '|' + hostState.round);
     hostState.strokes = [];
+    hostState.guessLog = [];
     hostState.lastGuess = '';
     hostState.roundWinner = null;
+    seenGuessCount = 0;
     hostState.phase = 'draw';
     hostState.timerEnd = Date.now() + hostState.settings.drawTimeSec * 1000;
-    hostState.message = `${hostState.drawer} is drawing…`;
+    hostState.message =
+      'Word ' +
+      hostState.wordNum +
+      '/' +
+      hostState.deckTotal +
+      ' · ' +
+      hostState.drawer +
+      ' is drawing…';
     hostRefreshHint();
     publishGameState({ force: true });
+    updateUiFromState(hostState);
+    redrawCanvas([]);
     beep(440, 0.06);
+  }
+
+  function startGameHost() {
+    hostState.settings = readHostSettingsFromDom();
+    saveSettings(hostState.settings);
+    if (matchIsOver()) {
+      resetMatchHost();
+    } else if (!hostWordDeck.length) {
+      if (!initWordDeck()) {
+        return;
+      }
+    }
+    if (hostState.round === 0) {
+      hostState.drawer = 'Man';
+    }
+    startRoundHost();
+    refreshStartBtnLabel();
   }
 
   function nextDrawerAfterRound() {
     hostState.drawer = hostState.drawer === 'Man' ? 'Boy' : 'Man';
   }
 
-  function checkGuessHost(text) {
+  function checkGuessHost(text, fromPlayer) {
     if (hostState.phase !== 'draw') {
       return;
     }
@@ -674,22 +965,26 @@
     if (!guess) {
       return;
     }
-    hostState.lastGuess = guess;
+    const guesser = hostState.drawer === 'Man' ? 'Boy' : 'Man';
+    const player = fromPlayer === 'Man' || fromPlayer === 'Boy' ? fromPlayer : guesser;
     const target = hostSecretWord.toLowerCase();
     if (guess === target) {
+      pushGuessLog(player, guess, true);
       const winner = hostState.drawer === 'Man' ? 'Boy' : 'Man';
       endRoundHost('correct', winner);
       return;
     }
-    hostState.message = `Nope: "${guess}"`;
+    pushGuessLog(player, guess, false);
+    hostState.message = 'Nope: "' + guess + '"';
     publishGameState({ force: true });
-    beep(140, 0.03);
+    updateUiFromState(hostState);
   }
 
   function mergeGuestState(data) {
     if (!data || typeof data !== 'object') {
       return;
     }
+    const prevRound = guestMirror.round;
     guestMirror = {
       phase: data.phase || 'lobby',
       drawer: data.drawer === 'Boy' ? 'Boy' : 'Man',
@@ -707,9 +1002,15 @@
       drawerWord: data.drawerWord || '',
       revealWord: data.revealWord || '',
       lastGuess: data.lastGuess || '',
+      guessLog: Array.isArray(data.guessLog) ? data.guessLog : [],
+      wordNum: data.wordNum | 0,
+      deckTotal: data.deckTotal | 0,
       roundWinner: data.roundWinner || null,
       message: data.message || '',
     };
+    if ((data.round | 0) !== prevRound) {
+      seenGuessCount = 0;
+    }
     updateUiFromState(guestMirror);
     redrawCanvas(guestMirror.strokes);
   }
@@ -736,28 +1037,35 @@
       if (hostState.phase === 'draw') {
         startBtn.textContent = 'End round early';
       } else if (hostState.phase === 'reveal') {
-        startBtn.textContent = 'Next round';
+        startBtn.textContent = matchIsOver() ? 'Start new game' : 'Skip to next round';
       } else {
-        startBtn.textContent = 'Start round';
+        startBtn.textContent = matchIsOver() ? 'Start new game' : 'Start game';
       }
     };
     refreshStartBtnLabel();
     if (startBtn) {
       startBtn.addEventListener('click', () => {
         if (hostState.phase === 'draw') {
-          endRoundHost('skipped', null);
+          endRoundHost('Round ended early', null);
           refreshStartBtnLabel();
           return;
         }
         if (hostState.phase === 'reveal') {
+          clearAutoNext();
+          if (matchIsOver()) {
+            resetMatchHost();
+            hostState.phase = 'lobby';
+            hostState.message = 'Rematch ready — Start game.';
+            publishGameState({ force: true });
+            refreshStartBtnLabel();
+            return;
+          }
           nextDrawerAfterRound();
-          hostState.phase = 'lobby';
-          hostState.message = `Next: ${hostState.drawer} draws. Host starts round.`;
-          publishGameState({ force: true });
+          startRoundHost();
           refreshStartBtnLabel();
           return;
         }
-        startRoundHost();
+        startGameHost();
         refreshStartBtnLabel();
       });
     }
@@ -776,7 +1084,7 @@
       }
       const text = guessInput.value;
       if (cfg.role === 'host') {
-        checkGuessHost(text);
+        checkGuessHost(text, HOST_ID);
         guessInput.value = '';
       } else {
         publishGuestAction({ guess: text });
@@ -937,7 +1245,7 @@
       }
     } else {
       const s = guestMirror;
-      if (s.phase === 'draw') {
+      if (s.phase === 'draw' || s.phase === 'reveal') {
         updateWordDisplay(s);
         updateTimerBar(s);
       }
@@ -974,7 +1282,7 @@
           publishGameState({ force: true });
         }
         if (typeof data.guess === 'string') {
-          checkGuessHost(data.guess);
+          checkGuessHost(data.guess, GUEST_ID);
         }
         partnerOk = true;
         partnerTrying = false;
