@@ -377,30 +377,41 @@
     }
   }
 
+  let mqttSession = null;
+
   function setupMQTT() {
-    if (!window.ArcadeMqtt) {
-      connectionInfo.innerHTML = 'MQTT: <span style="color:#ff6b6b">arcade-mqtt.js missing</span>';
+    if (!window.ArcadeGameMqtt) {
+      connectionInfo.innerHTML = 'MQTT: <span style="color:#ff6b6b">arcade-game-mqtt.js missing</span>';
       return;
     }
-    mqttLink = window.ArcadeMqtt.createLink({
+    mqttSession = window.ArcadeGameMqtt.setup({
+      gameKey: 'mahjong',
+      localId: cfg.role === 'host' ? HOST_ID : GUEST_ID,
+      remoteId: cfg.role === 'host' ? GUEST_ID : HOST_ID,
+      localLabel: cfg.localLabel,
+      remoteLabel: cfg.remoteLabel,
       brokerInfoEl: document.getElementById('brokerInfo'),
       connectionInfoEl: connectionInfo,
       uiRoot: document.getElementById('ui'),
-      partnerHint: 'Open ' + cfg.remoteLabel + ' with same ?room=, then Send ready ping.',
-      onConnected: function (c) {
-        client = c;
-        localConnected = true;
+      subscribe: function (c) {
         if (cfg.role === 'host') {
           c.subscribe(`mahjong/${GAME_ID}/${GUEST_ID}/state`);
           c.subscribe(`mahjong/${GAME_ID}/+/status`);
-          publishHostState();
         } else {
           c.subscribe(`mahjong/${GAME_ID}/${HOST_ID}/state`);
           c.subscribe(`mahjong/${GAME_ID}/+/status`);
         }
+      },
+      onConnected: function (c) {
+        client = c;
+        localConnected = true;
+        if (cfg.role === 'host') {
+          publishHostState();
+        }
         if (localStatus !== '—') {
           publishStatus(localStatus);
         }
+        mqttLink = mqttSession.getLink();
         mqttLink.log('ok', 'Waiting for ' + cfg.remoteLabel);
         syncPartnerUi();
       },
@@ -412,6 +423,7 @@
       },
       onMessage: onMqttMessage,
     });
+    mqttLink = mqttSession.getLink();
   }
 
 

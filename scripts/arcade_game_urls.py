@@ -57,30 +57,35 @@ REQUIRED_HTML_SNIPPETS: dict[str, tuple[str, ...]] = {
         'id="arcadeRoomPick"',
         "/arcade-room-pick.js",
         "/arcade-room-pick.css",
+        "/arcade-connect.js",
         "ArcadeRoom.mount",
     ),
     "/tetris/index.html": (
         'id="arcadeRoomPick"',
         "/arcade-room-pick.js",
         "/arcade-room-pick.css",
+        "/arcade-connect.js",
         "ArcadeRoom.mount",
     ),
     "/tictactoe/index.html": (
         'id="arcadeRoomPick"',
         "/arcade-room-pick.js",
         "/arcade-room-pick.css",
+        "/arcade-connect.js",
         "ArcadeRoom.mount",
     ),
     "/mahjong/index.html": (
         'id="arcadeRoomPick"',
         "/arcade-room-pick.js",
         "/arcade-room-pick.css",
+        "/arcade-connect.js",
         "ArcadeRoom.mount",
     ),
     "/scribble/index.html": (
         'id="arcadeRoomPick"',
         "/arcade-room-pick.js",
         "/arcade-room-pick.css",
+        "/arcade-connect.js",
         "ArcadeRoom.mount",
     ),
     "/scribble/man.html": (
@@ -99,8 +104,8 @@ REQUIRED_HTML_SNIPPETS: dict[str, tuple[str, ...]] = {
         "/scribble/scribble.js",
         'id="wordHintBar"',
     ),
-    "/pong/man.html": ("/arcade-room-pick.js", "rewritePartnerLinks"),
-    "/pong/boy.html": ("/arcade-room-pick.js", "rewritePartnerLinks"),
+    "/pong/man.html": ("/arcade-room-pick.js", "/arcade-game-mqtt.js", "rewritePartnerLinks"),
+    "/pong/boy.html": ("/arcade-room-pick.js", "/arcade-game-mqtt.js", "rewritePartnerLinks"),
     "/tetris/man.html": ("/arcade-room-pick.js", "getRoomId", "rewritePartnerLinks"),
     "/tetris/boy.html": ("/arcade-room-pick.js", "getRoomId", "rewritePartnerLinks"),
     "/tictactoe/man.html": ("/arcade-room-pick.js", "rewritePartnerLinks"),
@@ -125,7 +130,14 @@ SCRIBBLE_HOST_FUNCTIONAL_PAGE = "/scribble/man.html"
 ARCADE_ROOM_STATIC_ASSETS: tuple[str, ...] = (
     "/arcade-room-pick.js",
     "/arcade-room-pick.css",
+    "/arcade-connect.js",
+    "/arcade-game-mqtt.js",
+    "/arcade-mqtt.js",
+    "/arcade-mqtt.css",
 )
+
+# 2-player MQTT validation (validate_mqtt_2player.py).
+TWO_PLAYER_GAME_KEYS: tuple[str, ...] = ("pong", "tetris", "tictactoe", "mahjong", "scribble")
 
 # Scribble game static assets (explicit self-check in check_served_html.py).
 SCRIBBLE_STATIC_ASSETS: tuple[str, ...] = (

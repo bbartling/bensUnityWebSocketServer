@@ -50,6 +50,19 @@
   margin-top: 4px;
 }
 
+.arcade-room-broker-status {
+  margin: 0 0 8px;
+  font-size: 0.62rem;
+  line-height: 1.4;
+  color: #7af0ff;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  word-break: break-all;
+}
+
+.arcade-room-broker-status:empty {
+  display: none;
+}
+
 .arcade-room-pick-hint {
   margin: 0 0 12px;
   font-size: 0.68rem;

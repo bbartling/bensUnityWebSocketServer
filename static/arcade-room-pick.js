@@ -6,16 +6,9 @@
   'use strict';
 
   var STORAGE_PREFIX = 'arcade_room_';
-  var BROKER_CANDIDATES =
-    global.ArcadeMqtt && global.ArcadeMqtt.BROKER_CANDIDATES
-      ? global.ArcadeMqtt.BROKER_CANDIDATES.slice()
-      : [
-          'wss://broker.hivemq.com:8884/mqtt',
-          'wss://test.mosquitto.org:8081/mqtt',
-          'wss://test.mosquitto.org:8080/mqtt',
-        ];
-  var lobbyTryIdx = 0;
   var lobbyConnected = false;
+  var lobbyBrokerUrl = '';
+  var lobbySession = null;
   var LOBBY_STALE_MS = 50000;
   var HOST_HEARTBEAT_MS = 12000;
 
@@ -196,19 +189,15 @@
   }
 
   function loadMqtt(cb) {
-    if (global.mqtt) {
-      cb();
+    if (global.ArcadeConnect && global.ArcadeConnect.loadMqtt) {
+      global.ArcadeConnect.loadMqtt(cb);
       return;
     }
-    var s = global.document.createElement('script');
-    s.src = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
-    s.onload = function () {
-      cb();
-    };
-    s.onerror = function () {
-      cb(new Error('mqtt load failed'));
-    };
-    global.document.head.appendChild(s);
+    if (global.mqtt) {
+      cb(null);
+      return;
+    }
+    cb(new Error('mqtt load failed'));
   }
 
   function mount(opts) {
@@ -252,6 +241,7 @@
       '</div>' +
       '<div class="arcade-room-panel" data-panel="join" hidden>' +
       '<p class="arcade-room-pick-hint">Tap a room — the badge shows which button to open (<strong>MAN</strong> or <strong>BOY</strong>).</p>' +
+      '<p class="arcade-room-broker-status" aria-live="polite">MQTT: connecting…</p>' +
       '<p class="arcade-room-lobby-status">Connecting to room list…</p>' +
       '<ul class="arcade-room-open-list"></ul>' +
       '<p class="arcade-room-join-empty" hidden>No open rooms yet. Someone must <strong>Create a room</strong> first, or pick the same name on both devices.</p>' +
@@ -314,11 +304,10 @@
     }
 
     function lobbyTopic(slug) {
+      if (global.ArcadeConnect && global.ArcadeConnect.lobbyTopic) {
+        return global.ArcadeConnect.lobbyTopic(gameKey, slug);
+      }
       return 'arcade/lobby/' + gameKey + '/room/' + slugify(slug);
-    }
-
-    function lobbySubscribeTopic() {
-      return 'arcade/lobby/' + gameKey + '/room/+';
     }
 
     function seatsFromWaiting(waitingSeat) {
@@ -333,7 +322,7 @@
         return;
       }
       var seats = seatsFromWaiting(waitingSeat);
-      var payload = JSON.stringify({
+      var payload = {
         slug: slugify(slug),
         label: label || slugify(slug),
         man: manOverride != null ? manOverride : seats.man,
@@ -341,15 +330,23 @@
         waitingSeat: waitingSeat,
         updated: Date.now(),
         gameKey: gameKey,
-      });
-      lobbyClient.publish(lobbyTopic(slug), payload, { retain: true, qos: 0 });
+      };
+      if (lobbySession && lobbySession.publishRoom) {
+        lobbySession.publishRoom(slug, payload, true);
+      } else {
+        lobbyClient.publish(lobbyTopic(slug), JSON.stringify(payload), { retain: true, qos: 0 });
+      }
     }
 
     function clearRoom(slug) {
       if (!lobbyClient || !lobbyClient.connected) {
         return;
       }
-      lobbyClient.publish(lobbyTopic(slug), '', { retain: true, qos: 0 });
+      if (lobbySession && lobbySession.clearRoom) {
+        lobbySession.clearRoom(slug);
+      } else {
+        lobbyClient.publish(lobbyTopic(slug), '', { retain: true, qos: 0 });
+      }
     }
 
     function parseLobbyMessage(topic, message) {
@@ -549,64 +546,61 @@
       }
     }
 
-    function connectLobbyNext() {
-      if (lobbyConnected || lobbyTryIdx >= BROKER_CANDIDATES.length) {
-        if (!lobbyConnected) {
-          setLobbyStatus('Room list offline — pick the same name on both devices.');
-        }
-        return;
+    function setBrokerStatus(text) {
+      var el = root.querySelector('.arcade-room-broker-status');
+      if (el) {
+        el.textContent = text;
       }
-      if (lobbyClient) {
-        try {
-          lobbyClient.end(true);
-        } catch (e) {
-          /* ignore */
-        }
-        lobbyClient = null;
-      }
-      var url = BROKER_CANDIDATES[lobbyTryIdx];
-      lobbyTryIdx++;
-      setLobbyStatus('Connecting room list (' + lobbyTryIdx + '/' + BROKER_CANDIDATES.length + ')…');
-      lobbyClient = global.mqtt.connect(url, {
-        reconnectPeriod: 5000,
-        connectTimeout: 12000,
-        keepalive: 30,
-      });
-      lobbyClient.on('connect', function () {
-        lobbyConnected = true;
-        lobbyClient.subscribe(lobbySubscribeTopic());
-        setLobbyStatus('Watching for open rooms…');
-        renderOpenList();
-      });
-      lobbyClient.on('error', function () {
-        if (!lobbyConnected) {
-          global.setTimeout(connectLobbyNext, 350);
-        }
-      });
-      lobbyClient.on('message', function (topic, message) {
-        parseLobbyMessage(topic, message);
-        renderOpenList();
-      });
-      lobbyClient.on('close', function () {
-        lobbyConnected = false;
-        setLobbyStatus('Room list reconnecting…');
-      });
-      global.setTimeout(function () {
-        if (!lobbyConnected) {
-          connectLobbyNext();
-        }
-      }, 14000);
     }
 
     function startLobby() {
       loadMqtt(function (err) {
-        if (err || !global.mqtt) {
-          setLobbyStatus('Live room list unavailable — pick the same name on both devices.');
+        if (err || (!global.ArcadeMqtt && !global.mqtt)) {
+          setBrokerStatus('MQTT: failed to load');
+          setLobbyStatus('Room list offline — use the same ?room= on both devices.');
           return;
         }
-        lobbyTryIdx = 0;
-        lobbyConnected = false;
-        connectLobbyNext();
+        if (global.ArcadeConnect && global.ArcadeConnect.createLobbySession) {
+          lobbySession = global.ArcadeConnect.createLobbySession({
+            gameKey: gameKey,
+            onStatus: function (info) {
+              lobbyConnected = info.connected;
+              setBrokerStatus(
+                info.connected
+                  ? 'MQTT: connected · ' + (info.brokerUrl || '')
+                  : 'MQTT: ' + (info.text || info.state),
+              );
+            },
+            onBrokerStatus: function (st) {
+              if (st.brokerState === 'connecting') {
+                setBrokerStatus(
+                  'MQTT: connecting (' + st.attempt + '/' + st.total + ')… ' + (st.brokerUrl || ''),
+                );
+              } else if (st.brokerState === 'failed') {
+                setBrokerStatus('MQTT: all brokers failed');
+              }
+            },
+            onConnected: function (client, url) {
+              lobbyClient = client;
+              lobbyConnected = true;
+              lobbyBrokerUrl = url;
+              setLobbyStatus('Watching for open rooms…');
+              renderOpenList();
+            },
+            onMessage: function (topic, message) {
+              parseLobbyMessage(topic, message);
+              renderOpenList();
+            },
+            onClose: function () {
+              lobbyConnected = false;
+              setLobbyStatus('Room list reconnecting…');
+            },
+          });
+          lobbySession.start();
+          return;
+        }
+        setBrokerStatus('MQTT: arcade-connect.js missing');
+        setLobbyStatus('Room list offline — use the same ?room= on both devices.');
       });
     }
 

@@ -65,9 +65,13 @@ Run both checks against your local server:
 
 ```bash
 python scripts/arcade_game_urls.py
+python scripts/validate_mqtt_2player.py
+python scripts/mqtt_wss_ping.py --both --room test-room
 python scripts/check_served_html.py http://127.0.0.1:8000
 python scripts/check_browser_console.py http://127.0.0.1:8000
 ```
+
+`validate_mqtt_2player.py` checks broker WSS, lobby room list, and Man/Boy game topics for all five 2-player games (stops after 100 iterations or 300s).
 
 What to look for:
 
